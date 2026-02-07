@@ -1,31 +1,37 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Sparkles, ShoppingBag, Package, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ProductCard } from "@/components/ProductCard";
-import { mockProducts } from "@/data/products";
+import { fetchProducts } from "@/api/products";
 import { toast } from "sonner";
 
 export default function SmartCart() {
   const navigate = useNavigate();
-  const [quantities, setQuantities] = useState<Record<string, number>>(
-    Object.fromEntries(mockProducts.map((p) => [p.id, 1]))
-  );
+  const { data: products = [], isLoading, error } = useQuery({ queryKey: ["products"], queryFn: fetchProducts });
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [optimizing, setOptimizing] = useState(false);
 
+  const initialQuantities = useMemo(
+    () => (products.length ? Object.fromEntries(products.map((p) => [p.id, 1])) : {}),
+    [products.length]
+  );
+  const effectiveQuantities = Object.keys(quantities).length ? quantities : initialQuantities;
+
   const handleQuantityChange = (id: string, qty: number) => {
-    setQuantities((prev) => ({ ...prev, [id]: qty }));
+    setQuantities((prev) => ({ ...initialQuantities, ...prev, [id]: qty }));
   };
 
   const handleSwap = (productId: string, altId: string) => {
     toast.success("Product swapped!", { description: `Alternative selected for comparison.` });
   };
 
-  const activeProducts = mockProducts.filter((p) => quantities[p.id] > 0);
-  const subtotal = activeProducts.reduce((sum, p) => sum + p.price * quantities[p.id], 0);
+  const activeProducts = products.filter((p) => (effectiveQuantities[p.id] ?? 0) > 0);
+  const subtotal = activeProducts.reduce((sum, p) => sum + p.price * (effectiveQuantities[p.id] ?? 0), 0);
   const savings = activeProducts.reduce(
-    (sum, p) => sum + ((p.originalPrice || p.price) - p.price) * quantities[p.id],
+    (sum, p) => sum + ((p.originalPrice || p.price) - p.price) * (effectiveQuantities[p.id] ?? 0),
     0
   );
 
@@ -67,13 +73,19 @@ export default function SmartCart() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Products Grid */}
           <div className="lg:col-span-2">
+            {error && (
+              <p className="text-destructive text-sm py-4">Failed to load products. Is the backend running?</p>
+            )}
+            {isLoading && (
+              <p className="text-muted-foreground text-sm py-4">Loading products…</p>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {mockProducts.map((product, index) => (
+              {products.map((product, index) => (
                 <ProductCard
                   key={product.id}
                   product={product}
                   index={index}
-                  quantity={quantities[product.id]}
+                  quantity={effectiveQuantities[product.id] ?? 0}
                   onQuantityChange={handleQuantityChange}
                   onSwap={handleSwap}
                 />
@@ -94,8 +106,8 @@ export default function SmartCart() {
               <div className="space-y-2.5 mb-4">
                 {activeProducts.map((p) => (
                   <div key={p.id} className="flex justify-between text-xs">
-                    <span className="text-muted-foreground">{p.name} × {quantities[p.id]}</span>
-                    <span className="text-foreground font-medium">${p.price * quantities[p.id]}</span>
+                    <span className="text-muted-foreground">{p.name} × {effectiveQuantities[p.id] ?? 0}</span>
+                    <span className="text-foreground font-medium">${p.price * (effectiveQuantities[p.id] ?? 0)}</span>
                   </div>
                 ))}
               </div>

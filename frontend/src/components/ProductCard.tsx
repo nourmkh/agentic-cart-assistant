@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Star, Info, ChevronDown, Minus, Plus, ArrowRightLeft } from "lucide-react";
-import type { Product } from "@/data/products";
+import type { Product } from "@/types/product";
 import productHeadphones from "@/assets/product-headphones.jpg";
 import productSneakers from "@/assets/product-sneakers.jpg";
 import productWatch from "@/assets/product-watch.jpg";

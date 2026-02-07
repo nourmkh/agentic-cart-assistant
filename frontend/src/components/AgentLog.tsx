@@ -1,10 +1,12 @@
 import { motion } from "framer-motion";
 import { Check, Info } from "lucide-react";
 import { useState } from "react";
-import { agentLogs } from "@/data/products";
+import { useQuery } from "@tanstack/react-query";
+import { fetchAgentLogs } from "@/api/agent";
 
 export function AgentLog() {
   const [hoveredStep, setHoveredStep] = useState<number | null>(null);
+  const { data: agentLogs = [] } = useQuery({ queryKey: ["agentLogs"], queryFn: fetchAgentLogs });
 
   return (
     <div className="glass-panel rounded-2xl p-5 shadow-card">

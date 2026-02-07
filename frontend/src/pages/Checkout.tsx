@@ -1,16 +1,18 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ShoppingBag, CreditCard, Lock, CheckCircle2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AgentLog } from "@/components/AgentLog";
-import { mockProducts } from "@/data/products";
+import { fetchProducts } from "@/api/products";
 
 export default function Checkout() {
   const navigate = useNavigate();
   const [confirmed, setConfirmed] = useState(false);
-  const subtotal = mockProducts.reduce((s, p) => s + p.price, 0);
+  const { data: products = [], isLoading, error } = useQuery({ queryKey: ["products"], queryFn: fetchProducts });
+  const subtotal = products.reduce((s, p) => s + p.price, 0);
 
   const handleConfirm = () => {
     setConfirmed(true);
@@ -122,8 +124,10 @@ export default function Checkout() {
                   className="glass-panel rounded-2xl p-5 shadow-card sticky top-20"
                 >
                   <h3 className="text-sm font-semibold text-foreground mb-4">Order Summary</h3>
+                  {error && <p className="text-destructive text-xs mb-2">Could not load products.</p>}
+                  {isLoading && <p className="text-muted-foreground text-xs mb-2">Loading…</p>}
                   <div className="space-y-3 mb-4">
-                    {mockProducts.map((p) => (
+                    {products.map((p) => (
                       <div key={p.id} className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-lg bg-secondary" />
                         <div className="flex-1 min-w-0">
