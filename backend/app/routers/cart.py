@@ -271,6 +271,7 @@ async def get_cart(
                     "material": material_value,
                 },
                 "link": link,
+                "url": link,
                 "verified": False,
             }
         )

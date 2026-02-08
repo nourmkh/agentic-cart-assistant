@@ -4,10 +4,14 @@ export interface Product {
   brand: string;
   price: number;
   size: string;
+  color?: string;
+  material?: string;
   /** Local asset key (e.g. "headphones") or full image URL (Zara, Stradivarius, etc.) */
   image: string;
   /** Product page URL on retailer site (e.g. Zara, Stradivarius) */
   url?: string;
+  /** Primary product link */
+  link?: string;
   rating: number;
   retailer: string;
   delivery: string;

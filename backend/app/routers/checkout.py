@@ -1,7 +1,7 @@
 import threading
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from app.services.automation_service import AutomationService
 
 router = APIRouter(prefix="/api/checkout", tags=["checkout"])
@@ -9,16 +9,17 @@ automation_service = AutomationService()
 
 class CheckoutItem(BaseModel):
     id: str
-    name: str
-    retailer: str
-    url: str
-    price: float
-    size: str
+    title: str
+    retailer: str = ""
+    link: str = ""
+    price: float = 0.0
+    variant: Optional[Dict[str, Any]] = None
     color: Optional[str] = None
+    size: Optional[str] = None
 
 class UserData(BaseModel):
-    name: str
-    email: str
+    name: str = ""
+    email: str = ""
     address: Optional[str] = None
     city: Optional[str] = None
     zip: Optional[str] = None

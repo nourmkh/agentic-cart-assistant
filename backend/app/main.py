@@ -25,7 +25,18 @@ logging.getLogger("app.data.pinterest.filter").setLevel(logging.WARNING)
 logging.getLogger("app.data.pinterest.sync").setLevel(logging.WARNING)
 logging.getLogger("app.data.ZEP_mcp.pinterest_sync").setLevel(logging.WARNING)
 
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+
 app = FastAPI(title="Agentic Cart API")
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc):
+    logging.error(f"Validation error: {exc}")
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors(), "body": exc.body},
+    )
 
 app.add_middleware(
     CORSMiddleware,

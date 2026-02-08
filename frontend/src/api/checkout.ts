@@ -3,11 +3,17 @@ import { apiPost } from "./client";
 export interface AutomateCheckoutRequest {
     items: {
         id: string;
-        name: string;
+        title: string;
         retailer: string;
-        url: string;
+        link: string;
         price: number;
-        size: string;
+        variant?: {
+            size?: string;
+            color?: string;
+            material?: string;
+        };
+        size?: string;
+        color?: string;
     }[];
     user_data: {
         name: string;

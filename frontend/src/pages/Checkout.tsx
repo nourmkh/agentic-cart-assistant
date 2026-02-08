@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ShoppingBag, CreditCard, Lock, CheckCircle2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -48,8 +48,17 @@ export default function Checkout() {
   const [expiry, setExpiry] = useState("");
   const [cvc, setCvc] = useState("");
   const [focusedField, setFocusedField] = useState<FocusedField>(null);
-  const { data: products = [], isLoading, error } = useQuery({ queryKey: ["products"], queryFn: fetchProducts });
-  const subtotal = products.reduce((s, p) => s + p.price, 0);
+  const location = useLocation();
+  const quantities = location.state?.quantities as Record<string, number> || {};
+
+  const { data: products = [] } = useQuery({ queryKey: ["products"], queryFn: fetchProducts });
+
+  // Filter for active products and calculate subtotal
+  const activeProducts = products
+    .filter(p => (quantities[p.id] ?? 0) > 0)
+    .map(p => ({ ...p, quantity: quantities[p.id] ?? 1 }));
+
+  const subtotal = activeProducts.reduce((s, p) => s + (p.price * p.quantity), 0);
 
   const handleConfirm = async () => {
     setIsAutomating(true);
@@ -57,13 +66,19 @@ export default function Checkout() {
 
     try {
       const response = await automateCheckout({
-        items: products.map(p => ({
+        items: activeProducts.map(p => ({
           id: p.id,
-          name: p.name,
+          title: p.name,
           retailer: p.retailer,
-          url: p.url || "",
+          link: p.link || p.url || "",
           price: p.price,
-          size: p.size
+          size: p.size,
+          color: p.color,
+          variant: {
+            size: p.size,
+            color: p.color,
+            material: p.material
+          }
         })),
         user_data: {
           name: cardName,
@@ -259,19 +274,19 @@ export default function Checkout() {
                   className="glass-panel rounded-2xl p-5 shadow-card sticky top-20"
                 >
                   <h3 className="text-sm font-semibold text-foreground mb-4">Order Summary</h3>
-                  {error && <p className="text-destructive text-xs mb-2">Could not load products.</p>}
-                  {isLoading && <p className="text-muted-foreground text-xs mb-2">Loading…</p>}
                   <div className="space-y-3 mb-4">
-                    {products.map((p) => (
+                    {activeProducts.map((p) => (
                       <div key={p.id} className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-lg overflow-hidden bg-secondary">
                           <img src={getImageSrc(p.image)} alt={p.name} className="w-full h-full object-cover" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-medium text-foreground truncate">{p.name}</p>
-                          <p className="text-[11px] text-muted-foreground">{p.retailer} · Size: {p.size}</p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {p.retailer} · Size: {p.size} · Qty: {p.quantity}
+                          </p>
                         </div>
-                        <span className="text-xs font-semibold text-foreground">${p.price}</span>
+                        <span className="text-xs font-semibold text-foreground">${(p.price * p.quantity).toFixed(2)}</span>
                       </div>
                     ))}
                   </div>

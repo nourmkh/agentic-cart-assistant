@@ -22,125 +22,26 @@ from app.schemas.agent import ProductVariants, SearchItem, SearchResultItem
 # --- Retailer priority (trusted first, then expand) --------------------------
 
 PRIMARY_RETAILERS = [
-    "Zara",
-    "H&M",
-    "Uniqlo",
-    "Pull&Bear",
-    "Bershka",
-    "Stradivarius",
-    "Mango",
-    "COS",
-    "Massimo Dutti",
-    "Nike",
-    "Adidas",
-    "Puma",
-    "New Balance",
-    "Reebok",
-    "Under Armour",
-    "Decathlon",
-    "Amazon",
-    "ASOS",
-    "Zalando",
-    "Farfetch",
-    "SSENSE",
-    "eBay",
-    "Uniqlo U",
-    "Arket",
-    "Banana Republic",
+    "American Eagle",
     "Gap",
-    "Abercrombie & Fitch",
-    "Foot Locker",
-    "JD Sports",
-    "DSW",
-    "Aldo",
-    "Clarks",
-    "Dr. Martens",
+    "Zen",
+    "HA",
 ]
 PRIMARY_RETAILER_DOMAINS = [
-    "zara.com",
-    "hm.com",
-    "uniqlo.com",
-    "pullandbear.com",
-    "bershka.com",
-    "stradivarius.com",
-    "mango.com",
-    "cos.com",
-    "massimodutti.com",
-    "nike.com",
-    "adidas.com",
-    "puma.com",
-    "newbalance.com",
-    "reebok.com",
-    "underarmour.com",
-    "decathlon.com",
-    "amazon.com",
-    "asos.com",
-    "zalando.com",
-    "farfetch.com",
-    "ssense.com",
-    "ebay.com",
-    "arket.com",
-    "bananarepublic.com",
+    "ae.com",
     "gap.com",
-    "abercrombie.com",
-    "footlocker.com",
-    "jdsports.com",
-    "dsw.com",
-    "aldo.com",
-    "clarks.com",
-    "drmartens.com",
-]
-PRIMARY_RETAILER_DOMAINS = [
-    "nike.com",
-    "adidas.com",
-    "zara.com",
-    "hm.com",
-    "target.com",
-    "uniqlo.com",
-    "decathlon.com",
-    "amazon.com",
-    "asos.com",
+    "zen.com.tn",
+    "ha.com.tn",
 ]
 # Normalized (lower) for matching Serper "source" and domain-derived names
 _PRIMARY_NORMALIZED = {s.lower().replace(" ", "") for s in PRIMARY_RETAILERS}
 # Also match common variants (e.g. uniqlo.com -> Uniqlo)
 _PRIMARY_MATCH_KEYWORDS = [
-    "zara",
-    "hm",
-    "h&m",
-    "uniqlo",
-    "pull&bear",
-    "pullandbear",
-    "bershka",
-    "stradivarius",
-    "mango",
-    "cos",
-    "massimodutti",
-    "massimo",
-    "nike",
-    "adidas",
-    "puma",
-    "newbalance",
-    "reebok",
-    "underarmour",
-    "decathlon",
-    "amazon",
-    "asos",
-    "zalando",
-    "farfetch",
-    "ssense",
-    "ebay",
-    "arket",
-    "bananarepublic",
+    "american eagle",
+    "ae",
     "gap",
-    "abercrombie",
-    "fitch",
-    "footlocker",
-    "jdsports",
-    "dsw",
-    "aldo",
-    "clarks",
-    "drmartens",
+    "zen",
+    "ha",
 ]
 
 
@@ -271,8 +172,23 @@ async def _serper_shopping(query: str, api_key: str, num: int = 20) -> list[dict
     shopping = data.get("shopping") or data.get("organic") or data.get("products") or []
     if not isinstance(shopping, list):
         shopping = []
+
+    # Manually filter to only allowed retailers (strict whitelist)
+    allowed_kws = ["american eagle", "ae", "gap", "zen", "ha"]
+    filtered_shopping = []
+    for item in shopping:
+        src = (item.get("source") or "").lower()
+        title = (item.get("title") or "").lower()
+        link = (item.get("link") or "").lower()
+        
+        # Check if any allowed keyword is present in source, title, or link
+        is_allowed = any(k in src or k in title or k in link for k in allowed_kws)
+        if is_allowed:
+             filtered_shopping.append(item)
+    shopping = filtered_shopping
+
     if not shopping and data:
-        logger.info("Serper returned no shopping list; top-level keys: %s", list(data.keys()))
+        logger.info("Serper returned no shopping list (or all filtered); top-level keys: %s", list(data.keys()))
     return shopping
 
 
@@ -312,6 +228,19 @@ async def _serper_search(query: str, api_key: str, num: int = 3) -> list[dict[st
     organic = data.get("organic") or []
     if not isinstance(organic, list):
         organic = []
+        
+    # Manually filter to only allowed retailers
+    allowed_kws = ["american eagle", "ae", "gap", "zen", "ha"]
+    filtered_organic = []
+    for item in organic:
+        title = (item.get("title") or "").lower()
+        link = (item.get("link") or "").lower()
+        
+        is_allowed = any(k in title or k in link for k in allowed_kws)
+        if is_allowed:
+            filtered_organic.append(item)
+    organic = filtered_organic
+
     return organic
 
 

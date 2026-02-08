@@ -16,6 +16,7 @@ interface CartItem {
     material: string;
   };
   link: string | null;
+  url: string | null;
   verified: boolean;
 }
 
@@ -65,7 +66,10 @@ const mapCartItemToProduct = (item: CartItem): Product => {
     price: item.price,
     image: imageForItem(item),
     size: item.variant.size || "",
+    color: item.variant.color || "",
+    material: item.variant.material || "",
     url: item.link || undefined,
+    link: item.link || undefined,
     rating: item.verified ? 4.8 : 4.5,
     retailer: item.retailer,
     delivery,

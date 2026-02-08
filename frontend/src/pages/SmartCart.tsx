@@ -33,7 +33,7 @@ export default function SmartCart() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmTitle, setConfirmTitle] = useState("Confirm Purchase");
   const [confirmMessage, setConfirmMessage] = useState<React.ReactNode>("");
-  const [confirmProceed, setConfirmProceed] = useState<() => void>(() => () => {});
+  const [confirmProceed, setConfirmProceed] = useState<() => void>(() => () => { });
   const [budgetCurrency, setBudgetCurrency] = useState("USD");
   const [budgetBalance, setBudgetBalance] = useState<number | null>(null);
   const [confirmDetails, setConfirmDetails] = useState<{
@@ -218,7 +218,7 @@ export default function SmartCart() {
           localStorage.setItem("budget_balance", String(updated.wallet_balance));
           window.dispatchEvent(new Event("budget-updated"));
           await loadBudget();
-          navigate("/checkout");
+          navigate("/checkout", { state: { quantities: effectiveQuantities } });
         });
         setConfirmOpen(true);
         return;
@@ -233,16 +233,16 @@ export default function SmartCart() {
           localStorage.setItem("budget_balance", String(updated.wallet_balance));
           window.dispatchEvent(new Event("budget-updated"));
           await loadBudget();
-          navigate("/checkout");
+          navigate("/checkout", { state: { quantities: effectiveQuantities } });
         });
         setConfirmOpen(true);
         return;
       }
 
-      navigate("/checkout");
+      navigate("/checkout", { state: { quantities: effectiveQuantities } });
     } catch {
       toast.error("Budget check failed", { description: "Proceeding to checkout." });
-      navigate("/checkout");
+      navigate("/checkout", { state: { quantities: effectiveQuantities } });
     }
   };
 

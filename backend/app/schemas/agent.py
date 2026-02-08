@@ -37,6 +37,7 @@ class SearchResultItem(BaseModel):
     retailer: str
     image_url: str | None = Field(default=None, description="URL of the product image")
     link: str | None = Field(default=None, description="Product page URL")
+    url: str | None = Field(default=None, description="Product page URL (alias for automation)")
     short_description: str | None = Field(default=None, description="Short product description")
     item: str | None = Field(default=None, description="Requested item category (e.g. shirt, pants)")
 

@@ -41,7 +41,8 @@ class AutomationService:
                 
                 # Execute for each item sequentially
                 for item in items:
-                    logger.info(f"Using Universal Intelligent Agent for item: {item.get('name')}")
+                    name = item.get("title") or item.get("name")
+                    logger.info(f"Using Universal Intelligent Agent for item: {name}")
                     self.automate_generic(item, user_data)
                 
                 logger.info("Automation task reached the payment/checkout phase. Browser staying open.")
@@ -63,17 +64,110 @@ class AutomationService:
         page = self.context.new_page()
         Stealth().apply_stealth_sync(page)
         try:
-            url = item.get("url")
-            logger.info(f"--- [DEEP ANALYSIS] Mapping structure for: {item['name']} ---")
-            # Using domcontentloaded + sleep is much more robust against background tracking scripts
+            url = item.get("link") or item.get("url")
+            name = item.get("title") or item.get("name")
+            retailer = item.get("retailer", "")
+            
+            logger.info(f"--- [DEEP ANALYSIS] Mapping structure for: {name} ---")
+            
+            # Navigate to the provided URL
             page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            time.sleep(2)
+            
+            # SMART DETECTION: Check if we're actually on a product page
+            is_product_page = page.evaluate("""() => {
+                // Look for product-specific indicators
+                const indicators = [
+                    'add to cart', 'ajouter au panier', 'add to bag',
+                    'buy now', 'acheter', 'size', 'taille', 
+                    'color', 'couleur', 'select size', 'choisir'
+                ];
+                const bodyText = document.body.innerText.toLowerCase();
+                const hasProductButtons = Array.from(document.querySelectorAll('button')).some(btn => {
+                    const text = btn.innerText.toLowerCase();
+                    return indicators.some(kw => text.includes(kw));
+                });
+                
+                // Check URL structure (product pages often have /p/ or /product/ or item IDs)
+                const urlPath = window.location.pathname.toLowerCase();
+                const hasProductPath = urlPath.includes('/p/') || 
+                                      urlPath.includes('/product') || 
+                                      urlPath.includes('/item') ||
+                                      /\\/\\d+/.test(urlPath);
+                
+                return hasProductButtons || hasProductPath;
+            }""")
+            
+            # If not on product page, search for the product
+            if not is_product_page:
+                logger.info(f"⚠️ Not on product page. Searching for: {name}")
+                
+                # Try to find and use the site's search
+                search_success = page.evaluate(f"""(productName) => {{
+                    const searchInputs = Array.from(document.querySelectorAll('input[type="search"], input[type="text"], input[placeholder*="search" i], input[placeholder*="recherche" i]'));
+                    
+                    for (const input of searchInputs) {{
+                        // Skip hidden inputs
+                        const rect = input.getBoundingClientRect();
+                        if (rect.width === 0 || rect.height === 0) continue;
+                        
+                        // Focus and fill the search
+                        input.focus();
+                        input.value = productName;
+                        
+                        // Trigger events
+                        input.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                        input.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                        
+                        // Try to submit (look for search button or press Enter)
+                        const searchBtn = input.closest('form')?.querySelector('button[type="submit"], button[aria-label*="search" i]');
+                        if (searchBtn) {{
+                            searchBtn.click();
+                            return true;
+                        }}
+                        
+                        // Press Enter as fallback
+                        input.dispatchEvent(new KeyboardEvent('keydown', {{ key: 'Enter', keyCode: 13, bubbles: true }}));
+                        return true;
+                    }}
+                    return false;
+                }}""", name)
+                
+                if search_success:
+                    logger.info("✓ Search submitted, waiting for results...")
+                    time.sleep(3)
+                    
+                    # Click on the first product result
+                    product_clicked = page.evaluate("""() => {
+                        // Look for product links in search results
+                        const productLinks = Array.from(document.querySelectorAll('a[href*="/p/"], a[href*="/product"], a[class*="product" i]'));
+                        
+                        for (const link of productLinks) {
+                            const rect = link.getBoundingClientRect();
+                            // Must be visible and reasonable size
+                            if (rect.width > 100 && rect.height > 100) {
+                                link.click();
+                                return true;
+                            }
+                        }
+                        return false;
+                    }""")
+                    
+                    if product_clicked:
+                        logger.info("✓ Navigated to product from search results")
+                        time.sleep(2)
+                    else:
+                        logger.warning("⚠️ Could not find product in search results")
+                else:
+                    logger.warning("⚠️ Could not find search box on page")
+            
             # 1. SETUP COLOR & SEARCH
-            color = item.get("color")
+            variant = item.get("variant") or {}
+            color = item.get("color") or variant.get("color")
+            size = item.get("size") or variant.get("size")
             color_ready = True
             size_ready = True
             
-            # Using domcontentloaded + short sleep is best for speed
-            page.goto(url, wait_until="domcontentloaded", timeout=45000)
             time.sleep(1.5) 
             
             # 1. Structural Mapping (Deep DOM Introspection)
@@ -129,8 +223,14 @@ class AutomationService:
                 page.evaluate("""() => {
                     const obstructions = document.querySelectorAll('button, a, div[id*="cookie"], [class*="cookie"], [id*="consent"], [class*="consent"]');
                     const kws = ['accept', 'accepter', 'allow', 'agree', 'd\\'accord', 'ok'];
+                    const socialKws = ['facebook', 'instagram', 'twitter', 'tiktok', 'youtube', 'pinterest', 'social', 'sharing'];
                     obstructions.forEach(el => {
-                        if(kws.some(kw => el.innerText.toLowerCase().includes(kw))) el.click();
+                        const text = el.innerText.toLowerCase();
+                        const href = (el.href || "").toLowerCase();
+                        const id = (el.id || "").toLowerCase();
+                        const cls = (el.className || "").toString().toLowerCase();
+                        const isSocial = socialKws.some(skw => href.includes(skw) || id.includes(skw) || cls.includes(skw));
+                        if(kws.some(kw => text.includes(kw)) && !isSocial) el.click();
                     });
                 }""")
             except: pass
@@ -236,7 +336,6 @@ class AutomationService:
             time.sleep(2)
 
             # 4. INTELLIGENT SIZE SELECTION
-            size = item.get("size")
             if size:
                 size_ready = False
                 logger.info(f"Targeting size '{size}' from mapped structure...")
@@ -266,10 +365,22 @@ class AutomationService:
             if color_ready and size_ready:
                 logger.info("Prerequisites met. Executing mapped 'Add to Cart' action...")
                 cart_success = page.evaluate("""() => {
-                    const kws = ['add', 'ajouter', 'bag', 'basket', 'panier'];
-                    const b = Array.from(document.querySelectorAll('button')).find(b => 
-                        kws.some(kw => b.innerText.toLowerCase().includes(kw)) && b.getBoundingClientRect().width > 50
-                    );
+                    const kws = ['add', 'ajouter', 'bag', 'basket', 'panier', 'cart'];
+                    const socialKws = ['facebook', 'instagram', 'twitter', 'tiktok', 'youtube', 'pinterest', 'social', 'sharing'];
+                    const wishKws = ['wishlist', 'favori', 'souhait', 'like', 'heart', 'love', 'save', 'later'];
+                    
+                    const b = Array.from(document.querySelectorAll('button, a[role="button"], input[type="submit"]')).find(b => {
+                        const text = b.innerText.toLowerCase();
+                        const href = (b.href || "").toLowerCase();
+                        const aria = (b.getAttribute('aria-label') || "").toLowerCase();
+                        const id = (b.id || "").toLowerCase();
+                        const cls = (b.className || "").toString().toLowerCase();
+                        
+                        const isSocial = socialKws.some(skw => href.includes(skw) || aria.includes(skw) || id.includes(skw) || cls.includes(skw));
+                        const isWish = wishKws.some(wkw => text.includes(wkw) || aria.includes(wkw) || id.includes(wkw) || cls.includes(wkw));
+                        
+                        return kws.some(kw => text.includes(kw)) && !isSocial && !isWish && b.getBoundingClientRect().width > 50;
+                    });
                     if (b) { b.click(); return true; }
                     return false;
                 }""")
@@ -282,10 +393,23 @@ class AutomationService:
 
             # 6. NAVIGATE TO CHECKOUT
             page.evaluate("""() => {
-                const kws = ['checkout', 'payment', 'commander', 'panier'];
-                const b = Array.from(document.querySelectorAll('a, button')).find(b => 
-                    kws.some(kw => b.innerText.toLowerCase().includes(kw))
-                );
+                const kws = ['checkout', 'payment', 'commander', 'panier', 'pago', 'caisse', 'terminer', 'valider'];
+                const socialKws = ['facebook', 'instagram', 'twitter', 'tiktok', 'youtube', 'pinterest', 'social', 'sharing'];
+                const wishKws = ['wishlist', 'favori', 'souhait', 'like', 'heart', 'love', 'save', 'later'];
+
+                const b = Array.from(document.querySelectorAll('a, button, div[role="button"]')).find(b => {
+                    const text = b.innerText.toLowerCase();
+                    const href = (b.href || "").toLowerCase();
+                    const aria = (b.getAttribute('aria-label') || "").toLowerCase();
+                    const id = (b.id || "").toLowerCase();
+                    const cls = (b.className || "").toString().toLowerCase();
+                    
+                    const isSocial = socialKws.some(skw => href.includes(skw) || aria.includes(skw) || id.includes(skw) || cls.includes(skw));
+                    const isWish = wishKws.some(wkw => text.includes(wkw) || aria.includes(wkw) || id.includes(wkw) || cls.includes(wkw));
+                    
+                    // Prioritize checkout, fallback to simple panier only if not wishlist
+                    return kws.some(kw => text.includes(kw)) && !isSocial && !isWish && b.getBoundingClientRect().width > 20;
+                });
                 if (b) b.click();
                 else window.location.href = window.location.origin + '/checkout';
             }""")
