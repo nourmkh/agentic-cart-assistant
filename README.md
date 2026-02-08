@@ -97,10 +97,6 @@ The automation engine executes these steps when "Confirm & Pay" is clicked:
 
 ---
 
-
-## 🔄 System Workflow
-
-```mermaid
 flowchart TD
   subgraph FE[Frontend · React / Vite]
     FE1[SmartCart Page]
@@ -113,7 +109,7 @@ flowchart TD
     C1["POST /api/cart"]
     R1[Ranking Service]
     S1[Retail Search Service]
-    A1[Automation Service (Playwright Agent)]
+    A1["Automation Service · Playwright Agent"]
     T1["POST /api/tryon/generate"]
     P1["POST /api/pinterest/connect"]
   end
@@ -152,7 +148,6 @@ flowchart TD
   A1 --> RETAIL
   RETAIL --> A1
   A1 --> FE1
-```
 
 ## 🚀 Installation & Setup
 
