@@ -39,13 +39,18 @@ const imageForItem = (item: CartItem): Product["image"] => {
   return "bag";
 };
 
-const buildAlternatives = (item: CartItem): Product["alternatives"] => {
-  const base = item.price || 0;
-  return [
-    { id: `${item.id}-alt1`, name: item.title, price: Math.max(0, base * 0.9), brand: item.retailer },
-    { id: `${item.id}-alt2`, name: item.title, price: base * 1.05, brand: item.retailer },
-    { id: `${item.id}-alt3`, name: item.title, price: base * 1.1, brand: item.retailer },
-  ];
+const inferCategory = (title: string): string => {
+  const lower = title.toLowerCase();
+  if (lower.includes("t-shirt") || lower.includes("tshirt") || lower.includes("tee")) return "t-shirt";
+  if (lower.includes("shirt")) return "t-shirt";
+  if (lower.includes("pants") || lower.includes("jeans") || lower.includes("trouser")) return "pants";
+  if (lower.includes("shorts")) return "shorts";
+  if (lower.includes("dress")) return "dress";
+  if (lower.includes("skirt")) return "skirt";
+  if (lower.includes("hoodie") || lower.includes("sweater")) return "tops";
+  if (lower.includes("shoe") || lower.includes("sneaker") || lower.includes("boot")) return "shoes";
+  if (lower.includes("bag") || lower.includes("backpack") || lower.includes("purse")) return "bag";
+  return "apparel";
 };
 
 const mapCartItemToProduct = (item: CartItem): Product => {
@@ -59,13 +64,15 @@ const mapCartItemToProduct = (item: CartItem): Product => {
     brand: item.retailer,
     price: item.price,
     image: imageForItem(item),
+    size: item.variant.size || "",
+    url: item.link || undefined,
     rating: item.verified ? 4.8 : 4.5,
     retailer: item.retailer,
     delivery,
     matchScore: item.verified ? 96 : 90,
     whySuggested,
-    category: "Apparel",
-    alternatives: buildAlternatives(item),
+    category: inferCategory(item.title),
+    alternatives: [],
   };
 };
 

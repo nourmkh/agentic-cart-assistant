@@ -18,6 +18,7 @@ import { toast } from "sonner";
 export default function SmartCart() {
   const navigate = useNavigate();
   const { data: products = [], isLoading, error } = useQuery({ queryKey: ["products"], queryFn: fetchProducts });
+  const [displayProducts, setDisplayProducts] = useState<Product[]>([]);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [optimizing, setOptimizing] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -33,9 +34,43 @@ export default function SmartCart() {
     currency: string;
   } | null>(null);
 
+  const productById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
+  const groupedByCategory = useMemo(() => {
+    const grouped = new Map<string, Product[]>();
+    for (const product of products) {
+      const key = product.category || "apparel";
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key)?.push(product);
+    }
+    return grouped;
+  }, [products]);
+
+  const buildGroupAlternatives = (current: Product, group: Product[]): Product["alternatives"] =>
+    group
+      .filter((item) => item.id !== current.id)
+      .map((item) => ({ id: item.id, name: item.name, price: item.price, brand: item.brand }));
+
+  const groupedDisplay = useMemo(() => {
+    const output: Product[] = [];
+    groupedByCategory.forEach((group) => {
+      const [primary, ...rest] = group;
+      if (!primary) return;
+      output.push({ ...primary, alternatives: buildGroupAlternatives(primary, group) });
+      for (const alt of rest) {
+        // keep for lookup via productById
+      }
+    });
+    return output;
+  }, [groupedByCategory]);
+
+  useEffect(() => {
+    setDisplayProducts(groupedDisplay);
+    setQuantities({});
+  }, [groupedDisplay]);
+
   const initialQuantities = useMemo(
-    () => (products.length ? Object.fromEntries(products.map((p) => [p.id, 1])) : {}),
-    [products.length]
+    () => (displayProducts.length ? Object.fromEntries(displayProducts.map((p) => [p.id, 1])) : {}),
+    [displayProducts.length]
   );
   const effectiveQuantities = Object.keys(quantities).length ? quantities : initialQuantities;
 
@@ -44,10 +79,26 @@ export default function SmartCart() {
   };
 
   const handleSwap = (productId: string, altId: string) => {
-    toast.success("Product swapped!", { description: `Alternative selected for comparison.` });
+    const alt = productById.get(altId);
+    if (!alt) return;
+    setDisplayProducts((prev) =>
+      prev.map((product) => {
+        if (product.id !== productId) return product;
+        const group = groupedByCategory.get(product.category || "apparel") || [];
+        return { ...alt, alternatives: buildGroupAlternatives(alt, group) };
+      })
+    );
+    setQuantities((prev) => {
+      const qty = prev[productId] ?? 1;
+      const next = { ...prev };
+      delete next[productId];
+      next[altId] = qty;
+      return next;
+    });
+    toast.success("Product swapped!", { description: "Alternative selected for comparison." });
   };
 
-  const activeProducts = products.filter((p) => (effectiveQuantities[p.id] ?? 0) > 0);
+  const activeProducts = displayProducts.filter((p) => (effectiveQuantities[p.id] ?? 0) > 0);
   const subtotal = activeProducts.reduce((sum, p) => sum + p.price * (effectiveQuantities[p.id] ?? 0), 0);
 
   const handleOptimize = () => {
@@ -169,7 +220,7 @@ export default function SmartCart() {
               <p className="text-muted-foreground text-sm py-4">Loading products…</p>
             )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {products.map((product, index) => (
+              {displayProducts.map((product, index) => (
                 <ProductCard
                   key={product.id}
                   product={product}

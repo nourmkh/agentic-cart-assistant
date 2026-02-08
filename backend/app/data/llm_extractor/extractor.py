@@ -115,10 +115,10 @@ def _fallback_extract(text: str) -> Dict[str, Any]:
         trailing_dollar = re.search(r"(\d+(?:\.\d+)?)\s*\$", text)
         if trailing_dollar:
             budget = f"${trailing_dollar.group(1)}"
-    else:
-        budget_match = re.search(r"budget\s*(?:of|:)?\s*(\d+(?:\.\d+)?)", lower)
-        if budget_match:
-            budget = f"${budget_match.group(1)}"
+        else:
+            budget_match = re.search(r"budget\s*(?:of|:)?\s*(\d+(?:\.\d+)?)", lower)
+            if budget_match:
+                budget = f"${budget_match.group(1)}"
 
     deadline = ""
     deadline_match = re.search(r"\bby\s+([a-zA-Z]+)\b", lower)
