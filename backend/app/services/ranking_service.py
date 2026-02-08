@@ -3,6 +3,9 @@ import os
 import logging
 import re
 from dotenv import load_dotenv
+from app.data.ZEP_mcp import get_zep_client
+from app.data.pinterest import get_zep_thread_id
+from zep_cloud.errors import NotFoundError
 
 try:
     from groq import Groq  # type: ignore
@@ -16,6 +19,8 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+ZEP_CONTEXT_TEMPLATE_ID = "pinterest-style-color-context"
 
 
 # =============================================================================
@@ -100,6 +105,144 @@ def calculate_style_match(product: Dict[str, Any], persona: Dict[str, Any]) -> f
     total_weight += 0.6
 
     return round(score / total_weight, 3) if total_weight > 0 else 0.5
+
+
+def _ensure_zep_context_template() -> None:
+    client = get_zep_client()
+    if not client:
+        return
+    template = (
+        """# PREFERRED COLORS\n"
+        "%{entities types=[Color, PreferredColor, ColorPreference] limit=10}\n\n"
+        "# PREFERRED STYLES\n"
+        "%{entities types=[Style, PreferredStyle, StylePreference] limit=10}\n\n"
+        "# PINTEREST OUTFIT SUMMARIES\n"
+        "%{messages limit=50}"
+        """
+    )
+    try:
+        client.context.create_context_template(
+            template_id=ZEP_CONTEXT_TEMPLATE_ID,
+            template=template,
+        )
+    except Exception:
+        # Template may already exist; ignore.
+        return
+
+
+def _parse_section_list(context_text: str, header: str) -> List[str]:
+    lines = context_text.splitlines()
+    header_idx = None
+    for idx, line in enumerate(lines):
+        if line.strip().upper() == header.upper():
+            header_idx = idx
+            break
+    if header_idx is None:
+        return []
+
+    values: List[str] = []
+    for line in lines[header_idx + 1 :]:
+        if line.strip().startswith("#"):
+            break
+        text = line.strip().lstrip("-•*").strip()
+        if not text:
+            continue
+        values.extend([v.strip() for v in text.split(",") if v.strip()])
+    return values
+
+
+def _parse_styles_colors_from_messages(context_text: str) -> Dict[str, List[str]]:
+    styles: List[str] = []
+    colors: List[str] = []
+
+    for match in re.findall(r"Colors:\s*([^\.]+)\.", context_text, flags=re.IGNORECASE):
+        colors.extend([v.strip() for v in match.split(",") if v.strip()])
+    for match in re.findall(r"Style:\s*([^\.]+)\.", context_text, flags=re.IGNORECASE):
+        styles.extend([v.strip() for v in match.split(",") if v.strip()])
+
+    return {
+        "preferred_styles": list(dict.fromkeys(styles)),
+        "preferred_colors": list(dict.fromkeys(colors)),
+    }
+
+
+def get_zep_persona_from_pinterest() -> Dict[str, Any]:
+    client = get_zep_client()
+    thread_id = get_zep_thread_id()
+    if not client or not thread_id:
+        logger.info("[Zep] Missing client or Pinterest thread; skipping persona retrieval")
+        return {}
+
+    _ensure_zep_context_template()
+
+    try:
+        try:
+            client.thread.get(thread_id=thread_id)
+        except NotFoundError:
+            logger.info("[Zep] Thread not found for thread_id=%s; skipping persona retrieval", thread_id)
+            return {}
+
+        logger.info("[Zep] Retrieving context for thread=%s template=%s", thread_id, ZEP_CONTEXT_TEMPLATE_ID)
+        result = client.thread.get_user_context(
+            thread_id=thread_id,
+            template_id=ZEP_CONTEXT_TEMPLATE_ID,
+        )
+        context_text = getattr(result, "context", "") or ""
+        logger.info("[Zep] Raw context length=%s", len(context_text))
+        if context_text:
+            logger.info("[Zep] Raw context:\n%s", context_text)
+        if not context_text:
+            return {}
+
+        colors = _parse_section_list(context_text, "# PREFERRED COLORS")
+        styles = _parse_section_list(context_text, "# PREFERRED STYLES")
+        if not colors and not styles:
+            parsed = _parse_styles_colors_from_messages(context_text)
+            colors = parsed.get("preferred_colors", [])
+            styles = parsed.get("preferred_styles", [])
+
+        logger.info("[Zep] Parsed preferred_colors=%s", colors)
+        logger.info("[Zep] Parsed preferred_styles=%s", styles)
+
+        return {
+            "preferred_styles": styles,
+            "preferred_colors": colors,
+        }
+    except NotFoundError:
+        logger.info("[Zep] Context template or thread not found; retrying after template ensure")
+        _ensure_zep_context_template()
+        try:
+            result = client.thread.get_user_context(
+                thread_id=thread_id,
+                template_id=ZEP_CONTEXT_TEMPLATE_ID,
+            )
+            context_text = getattr(result, "context", "") or ""
+            logger.info("[Zep] Raw context length=%s", len(context_text))
+            if context_text:
+                logger.info("[Zep] Raw context:\n%s", context_text)
+            if not context_text:
+                return {}
+
+            colors = _parse_section_list(context_text, "# PREFERRED COLORS")
+            styles = _parse_section_list(context_text, "# PREFERRED STYLES")
+            if not colors and not styles:
+                parsed = _parse_styles_colors_from_messages(context_text)
+                colors = parsed.get("preferred_colors", [])
+                styles = parsed.get("preferred_styles", [])
+
+            logger.info("[Zep] Parsed preferred_colors=%s", colors)
+            logger.info("[Zep] Parsed preferred_styles=%s", styles)
+
+            return {
+                "preferred_styles": styles,
+                "preferred_colors": colors,
+            }
+        except Exception as exc:
+            logger.exception("[Zep] Failed to retrieve context after retry: %s", exc)
+            return {}
+    except Exception as exc:
+        logger.exception("[Zep] Failed to retrieve context: %s", exc)
+        return {}
 
 
 # =============================================================================
@@ -196,6 +339,14 @@ def process_and_rank(products_data: Dict[str, Any], client_data: Dict[str, Any],
     weights = get_weights(preferences)
 
     results: Dict[str, Any] = {}
+
+    zep_persona = zep_persona or {}
+    zep_context = get_zep_persona_from_pinterest()
+    if zep_context:
+        zep_persona = {
+            "preferred_styles": zep_context.get("preferred_styles") or zep_persona.get("preferred_styles") or [],
+            "preferred_colors": zep_context.get("preferred_colors") or zep_persona.get("preferred_colors") or [],
+        }
 
     logger.info("[Ranking] start")
     logger.info("[Ranking] budget=%s max_delivery_days=%s preferences=%s", budget, max_delivery_days, preferences)
