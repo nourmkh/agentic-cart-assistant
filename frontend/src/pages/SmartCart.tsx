@@ -75,6 +75,13 @@ export default function SmartCart() {
 
   useEffect(() => {
     loadBudget();
+    const handleBudgetUpdated = () => {
+      loadBudget();
+    };
+    window.addEventListener("budget-updated", handleBudgetUpdated as EventListener);
+    return () => {
+      window.removeEventListener("budget-updated", handleBudgetUpdated as EventListener);
+    };
   }, []);
 
   const handleProceedToCheckout = async () => {
@@ -148,6 +155,14 @@ export default function SmartCart() {
       </header>
 
       <div className="max-w-6xl mx-auto px-4 py-6">
+        <div className="mb-5 flex items-center justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-wider text-muted-foreground">Current Budget</p>
+            <p className="text-2xl font-bold text-foreground">
+              {budgetBalance !== null ? `${budgetBalance.toFixed(2)} ${budgetCurrency}` : "—"}
+            </p>
+          </div>
+        </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Products Grid */}
           <div className="lg:col-span-2">
