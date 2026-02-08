@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import agent, products, pinterest, llm
+from app.routers import agent, products, pinterest, llm, budget
 
 load_dotenv()
 
@@ -38,6 +38,7 @@ app.include_router(products.router)
 app.include_router(agent.router)
 app.include_router(pinterest.router)
 app.include_router(llm.router)
+app.include_router(budget.router)
 
 
 @app.get("/health")

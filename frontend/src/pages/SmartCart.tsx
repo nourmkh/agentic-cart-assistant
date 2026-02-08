@@ -1,11 +1,18 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Sparkles, ShoppingBag, Package, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+} from "@/components/ui/alert-dialog";
 import { ProductCard } from "@/components/ProductCard";
 import { fetchProducts } from "@/api/products";
+import { confirmPurchase, fetchBudgetStatus, proposePurchase } from "@/api/budget";
 import { toast } from "sonner";
 
 export default function SmartCart() {
@@ -13,6 +20,18 @@ export default function SmartCart() {
   const { data: products = [], isLoading, error } = useQuery({ queryKey: ["products"], queryFn: fetchProducts });
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [optimizing, setOptimizing] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmTitle, setConfirmTitle] = useState("Confirm Purchase");
+  const [confirmMessage, setConfirmMessage] = useState<React.ReactNode>("");
+  const [confirmProceed, setConfirmProceed] = useState<() => void>(() => () => {});
+  const [budgetCurrency, setBudgetCurrency] = useState("USD");
+  const [budgetBalance, setBudgetBalance] = useState<number | null>(null);
+  const [confirmDetails, setConfirmDetails] = useState<{
+    before: number;
+    price: number;
+    after: number;
+    currency: string;
+  } | null>(null);
 
   const initialQuantities = useMemo(
     () => (products.length ? Object.fromEntries(products.map((p) => [p.id, 1])) : {}),
@@ -41,6 +60,65 @@ export default function SmartCart() {
       setOptimizing(false);
       toast.success("Cart optimized!", { description: "Saved an additional $28 by switching retailers." });
     }, 1500);
+  };
+
+  const loadBudget = async () => {
+    try {
+      const status = await fetchBudgetStatus();
+      setBudgetCurrency(status.currency);
+      setBudgetBalance(status.wallet_balance);
+    } catch {
+      setBudgetCurrency("USD");
+      setBudgetBalance(null);
+    }
+  };
+
+  useEffect(() => {
+    loadBudget();
+  }, []);
+
+  const handleProceedToCheckout = async () => {
+    try {
+      const currentBalance = budgetBalance ?? subtotal;
+      const nextBalance = currentBalance - subtotal;
+      const result = await proposePurchase(subtotal, "Cart total");
+      const message = result.result;
+
+      if (message.includes("[BUDGET_EXCEEDED]")) {
+        setConfirmTitle("Confirm Purchase");
+        setConfirmDetails({ before: currentBalance, price: subtotal, after: nextBalance, currency: budgetCurrency });
+        setConfirmMessage("This purchase exceeds your budget. Do you want to proceed anyway?");
+        setConfirmProceed(() => async () => {
+          const updated = await confirmPurchase(subtotal);
+          localStorage.setItem("budget_balance", String(updated.wallet_balance));
+          window.dispatchEvent(new Event("budget-updated"));
+          await loadBudget();
+          navigate("/checkout");
+        });
+        setConfirmOpen(true);
+        return;
+      }
+
+      if (message.includes("[WALLET_CONFIRMATION_REQUIRED]")) {
+        setConfirmTitle("Confirm Purchase");
+        setConfirmDetails({ before: currentBalance, price: subtotal, after: nextBalance, currency: budgetCurrency });
+        setConfirmMessage("Do you confirm this purchase?");
+        setConfirmProceed(() => async () => {
+          const updated = await confirmPurchase(subtotal);
+          localStorage.setItem("budget_balance", String(updated.wallet_balance));
+          window.dispatchEvent(new Event("budget-updated"));
+          await loadBudget();
+          navigate("/checkout");
+        });
+        setConfirmOpen(true);
+        return;
+      }
+
+      navigate("/checkout");
+    } catch {
+      toast.error("Budget check failed", { description: "Proceeding to checkout." });
+      navigate("/checkout");
+    }
   };
 
   return (
@@ -143,7 +221,7 @@ export default function SmartCart() {
               </div>
 
               <Button
-                onClick={() => navigate("/checkout")}
+                onClick={handleProceedToCheckout}
                 className="w-full mt-4 gradient-bg text-primary-foreground py-5 rounded-xl text-sm font-semibold shadow-glow hover:opacity-90 transition-opacity border-0"
               >
                 Proceed to Checkout
@@ -152,6 +230,68 @@ export default function SmartCart() {
           </div>
         </div>
       </div>
+
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <div className="relative">
+            <button
+              onClick={() => setConfirmOpen(false)}
+              className="absolute right-2 top-2 text-muted-foreground hover:text-foreground"
+            >
+              ×
+            </button>
+            <h2 className="text-base font-semibold text-foreground mb-4">{confirmTitle}</h2>
+
+            <div className="flex items-center gap-3 p-3 rounded-2xl bg-secondary/40 border border-border mb-4">
+              <div className="w-10 h-10 rounded-xl bg-background flex items-center justify-center">
+                <ShoppingBag className="w-5 h-5 text-muted-foreground" />
+              </div>
+              <div className="flex-1">
+                <p className="text-xs text-muted-foreground">Cart total</p>
+                <p className="text-sm font-semibold text-foreground">
+                  {confirmDetails ? `${confirmDetails.price.toFixed(2)} ${confirmDetails.currency}` : ""}
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2 text-xs">
+              <div className="flex justify-between text-muted-foreground">
+                <span>Current Balance:</span>
+                <span className="font-semibold text-foreground">
+                  {confirmDetails ? `${confirmDetails.before.toFixed(2)} ${confirmDetails.currency}` : ""}
+                </span>
+              </div>
+              <div className="flex justify-between text-red-500">
+                <span>Price:</span>
+                <span className="font-semibold">
+                  {confirmDetails ? `-${confirmDetails.price.toFixed(2)} ${confirmDetails.currency}` : ""}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm font-semibold border-t border-border pt-2">
+                <span>Remaining:</span>
+                <span>
+                  {confirmDetails ? `${confirmDetails.after.toFixed(2)} ${confirmDetails.currency}` : ""}
+                </span>
+              </div>
+            </div>
+
+            <p className="text-xs text-muted-foreground mt-3">{confirmMessage}</p>
+
+            <div className="flex items-center gap-2 mt-5">
+              <AlertDialogCancel asChild>
+                <Button variant="outline" className="w-full rounded-xl">
+                  Cancel
+                </Button>
+              </AlertDialogCancel>
+              <AlertDialogAction asChild>
+                <Button onClick={confirmProceed} className="w-full rounded-xl gradient-bg text-primary-foreground">
+                  Confirm & Buy
+                </Button>
+              </AlertDialogAction>
+            </div>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { Mic, Search, Sparkles, Image, Zap, DollarSign, Truck, Palette, Heart, S
 import { Button } from "@/components/ui/button";
 import { fetchPinterestLoginUrl, fetchPinterestStatus } from "@/api/pinterest";
 import { extractRequirements } from "@/api/llm";
+import { fetchBudgetStatus, setBudget } from "@/api/budget";
 
 const preferences = [
   { label: "Budget", icon: DollarSign, active: false },
@@ -25,6 +26,9 @@ export function SearchSidebar({ onStartShopping }: SearchSidebarProps) {
   const [isPinterestConnected, setIsPinterestConnected] = useState(false);
   const [isPinterestLoading, setIsPinterestLoading] = useState(false);
   const [pinterestError, setPinterestError] = useState<string | null>(null);
+  const [budget, setBudgetValue] = useState("");
+  const [budgetStatus, setBudgetStatus] = useState<string | null>(null);
+  const [budgetLocked, setBudgetLocked] = useState(false);
 
   const togglePref = (label: string) => {
     setActivePrefs((prev) => {
@@ -43,6 +47,21 @@ export function SearchSidebar({ onStartShopping }: SearchSidebarProps) {
     }, 2000);
   };
 
+  const handleSaveBudget = async () => {
+    const value = Number(budget);
+    if (!Number.isFinite(value) || value <= 0) {
+      setBudgetStatus("Enter a valid budget.");
+      return;
+    }
+    try {
+      await setBudget(value, "USD");
+      setBudgetStatus("Budget saved.");
+      setBudgetLocked(true);
+    } catch {
+      setBudgetStatus("Failed to save budget.");
+    }
+  };
+
   useEffect(() => {
     let isMounted = true;
     fetchPinterestStatus()
@@ -54,6 +73,51 @@ export function SearchSidebar({ onStartShopping }: SearchSidebarProps) {
       });
     return () => {
       isMounted = false;
+    };
+  }, []);
+
+  const refreshBudget = async () => {
+    try {
+      const status = await fetchBudgetStatus();
+      if (status.wallet_balance >= 0) {
+        setBudgetValue(String(status.wallet_balance));
+        localStorage.setItem("budget_balance", String(status.wallet_balance));
+      }
+      setBudgetLocked(true);
+    } catch {
+      const cached = localStorage.getItem("budget_balance");
+      if (cached) {
+        setBudgetValue(cached);
+        setBudgetLocked(true);
+      }
+    }
+  };
+
+  useEffect(() => {
+    refreshBudget();
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === "budget_balance" && event.newValue) {
+        setBudgetValue(event.newValue);
+        setBudgetLocked(true);
+      }
+    };
+    const handleBudgetUpdated = () => {
+      refreshBudget();
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        refreshBudget();
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    window.addEventListener("budget-updated", handleBudgetUpdated as EventListener);
+    window.addEventListener("focus", handleBudgetUpdated);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener("budget-updated", handleBudgetUpdated as EventListener);
+      window.removeEventListener("focus", handleBudgetUpdated);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, []);
 
@@ -126,6 +190,47 @@ export function SearchSidebar({ onStartShopping }: SearchSidebarProps) {
               <Mic className="w-4 h-4" />
             </button>
           </div>
+        </motion.div>
+
+        {/* Budget Input */}
+        <motion.div
+          className="mb-5"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.35 }}
+        >
+          <p className="text-xs font-medium text-muted-foreground mb-2.5 uppercase tracking-wider">
+            Budget
+          </p>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={1}
+              placeholder="Enter your budget"
+              className="h-10 w-full rounded-xl border border-border bg-background px-3 text-sm"
+              value={budget}
+              onChange={(e) => setBudgetValue(e.target.value)}
+              disabled={budgetLocked}
+            />
+            {budgetLocked ? (
+              <button
+                onClick={() => setBudgetLocked(false)}
+                className="h-10 px-4 rounded-xl border border-border bg-secondary text-xs font-medium"
+              >
+                Change
+              </button>
+            ) : (
+              <button
+                onClick={handleSaveBudget}
+                className="h-10 px-4 rounded-xl gradient-bg text-primary-foreground text-xs font-medium"
+              >
+                Save
+              </button>
+            )}
+          </div>
+          {budgetStatus ? (
+            <p className="text-[11px] text-muted-foreground mt-2">{budgetStatus}</p>
+          ) : null}
         </motion.div>
 
         {/* Preferences */}
