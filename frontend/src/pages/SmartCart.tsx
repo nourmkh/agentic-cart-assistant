@@ -163,23 +163,43 @@ export default function SmartCart() {
           {/* Products Grid */}
           <div className="lg:col-span-2">
             {error && (
-              <p className="text-destructive text-sm py-4">Failed to load products. Is the backend running?</p>
+              <div className="glass-panel rounded-2xl p-6 text-center">
+                <p className="text-destructive text-sm font-medium mb-2">Failed to load products</p>
+                <p className="text-muted-foreground text-xs">
+                  {error instanceof Error ? error.message : "Is the backend running at http://localhost:3001?"}
+                </p>
+                <p className="text-muted-foreground text-xs mt-2">
+                  Make sure the backend server is running: <code className="bg-secondary px-1.5 py-0.5 rounded text-[10px]">cd backend && uvicorn app.main:app --reload</code>
+                </p>
+              </div>
             )}
             {isLoading && (
-              <p className="text-muted-foreground text-sm py-4">Loading products…</p>
+              <div className="glass-panel rounded-2xl p-6 text-center">
+                <p className="text-muted-foreground text-sm">Loading products…</p>
+              </div>
             )}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {products.map((product, index) => (
-                <ProductCard
-                  key={product.id}
-                  product={product}
-                  index={index}
-                  quantity={effectiveQuantities[product.id] ?? 0}
-                  onQuantityChange={handleQuantityChange}
-                  onSwap={handleSwap}
-                />
-              ))}
-            </div>
+            {!isLoading && !error && products.length === 0 && (
+              <div className="glass-panel rounded-2xl p-6 text-center">
+                <p className="text-muted-foreground text-sm font-medium mb-2">No products found</p>
+                <p className="text-muted-foreground text-xs">
+                  The products list is empty. Check if the backend API is returning data.
+                </p>
+              </div>
+            )}
+            {!isLoading && !error && products.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {products.map((product, index) => (
+                  <ProductCard
+                    key={product.id}
+                    product={product}
+                    index={index}
+                    quantity={effectiveQuantities[product.id] ?? 0}
+                    onQuantityChange={handleQuantityChange}
+                    onSwap={handleSwap}
+                  />
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Summary Sidebar */}
