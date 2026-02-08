@@ -13,6 +13,9 @@ export interface Product {
   delivery: string;
   matchScore: number;
   whySuggested: string;
+  rankingScore?: number | null;
+  rankingRank?: number | null;
+  llmExplanation?: string | null;
   category: string;
   alternatives: { id: string; name: string; price: number; brand: string }[];
 }

@@ -31,16 +31,26 @@ interface ProductCardProps {
 export function ProductCard({ product, index, quantity, onQuantityChange, onSwap, onTryOn }: ProductCardProps) {
   const [showAlts, setShowAlts] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
+  const [showHoverDescription, setShowHoverDescription] = useState(false);
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.1, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-      className="glass-panel rounded-2xl overflow-hidden shadow-card hover:shadow-card-hover transition-all duration-300 group"
+      className="glass-panel rounded-2xl overflow-visible shadow-card hover:shadow-card-hover transition-all duration-300 group relative"
+      onMouseEnter={() => setShowHoverDescription(true)}
+      onMouseLeave={() => setShowHoverDescription(false)}
     >
-      {/* Image */}
-      <div className="relative aspect-square bg-secondary/50 overflow-hidden">
+      <div className="relative">
+        {showHoverDescription && (product.llmExplanation || product.whySuggested) && (
+          <div className="absolute z-20 top-3 left-full ml-3 w-64 rounded-xl glass-panel shadow-card-hover p-3 text-xs text-foreground leading-relaxed">
+            <p className="font-semibold gradient-text mb-1">Why suggested</p>
+            {product.llmExplanation || product.whySuggested}
+          </div>
+        )}
+        {/* Image */}
+        <div className="relative aspect-square bg-secondary/50 overflow-hidden rounded-t-2xl">
         <img
           src={getImageSrc(product.image)}
           alt={product.name}
@@ -67,6 +77,7 @@ export function ProductCard({ product, index, quantity, onQuantityChange, onSwap
         >
           <Trash2 className="w-4 h-4" />
         </button>
+        </div>
       </div>
 
       {/* Content */}
@@ -93,7 +104,7 @@ export function ProductCard({ product, index, quantity, onQuantityChange, onSwap
                   exit={{ opacity: 0, y: 4, scale: 0.95 }}
                   className="absolute right-0 top-full mt-1 w-56 p-3 rounded-xl glass-panel shadow-card-hover z-20 text-xs text-foreground leading-relaxed"
                 >
-                  <p className="font-semibold gradient-text mb-1">Why Suggested?</p>
+                  <p className="font-semibold gradient-text mb-1">Description</p>
                   {product.whySuggested}
                 </motion.div>
               )}
@@ -158,7 +169,7 @@ export function ProductCard({ product, index, quantity, onQuantityChange, onSwap
         >
           <span className="flex items-center gap-1">
             <ArrowRightLeft className="w-3 h-3" />
-            3 alternatives
+            {product.alternatives.length} {product.alternatives.length === 1 ? "alternative" : "alternatives"}
           </span>
           <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${showAlts ? "rotate-180" : ""}`} />
         </button>

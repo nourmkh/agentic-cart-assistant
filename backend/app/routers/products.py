@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 
 from app.data.products import get_products
-from app.ranking import process_and_rank, get_weights
+from app.services.ranking_service import process_and_rank, get_weights
 
 router = APIRouter(prefix="/api/products", tags=["products"])
 
@@ -86,10 +86,9 @@ def search_products(request: SearchRequest):
         "query": request.query,
         "items": products_by_category
     }
-    ranked_results = process_and_rank(products_data, client_data, zep_persona)
-    
-    # Get weights for response
-    weights = get_weights(request.preferences)
+    ranking_payload = process_and_rank(products_data, client_data, zep_persona)
+    ranked_results = ranking_payload.get("results", {})
+    weights = ranking_payload.get("weights") or get_weights(request.preferences)
     
     # Format response for frontend
     formatted_results = {}

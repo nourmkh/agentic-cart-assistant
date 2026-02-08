@@ -10,6 +10,10 @@ interface CartItem {
   retailer: string;
   deliveryEstimate: string;
   shortDescription?: string | null;
+  rankingScore?: number | null;
+  rankingRank?: number | null;
+  llmExplanation?: string | null;
+  whyLocal?: string | null;
   variant: {
     size: string;
     color: string;
@@ -56,7 +60,10 @@ const inferCategory = (title: string): string => {
 const mapCartItemToProduct = (item: CartItem): Product => {
   const delivery = item.deliveryEstimate || "";
   const variantParts = [item.variant.size, item.variant.color, item.variant.material].filter(Boolean).join(", ");
-  const whySuggested = item.shortDescription || (variantParts ? `Matches your preferences (${variantParts}).` : "");
+  const llmExplanation = item.llmExplanation || "";
+  const whySuggested = item.shortDescription || item.whyLocal || (variantParts ? `Matches your preferences (${variantParts}).` : "");
+  const rankingScore = typeof item.rankingScore === "number" ? item.rankingScore : null;
+  const matchScore = rankingScore !== null ? Math.round(rankingScore * 100) : item.verified ? 96 : 90;
 
   return {
     id: item.id,
@@ -69,8 +76,11 @@ const mapCartItemToProduct = (item: CartItem): Product => {
     rating: item.verified ? 4.8 : 4.5,
     retailer: item.retailer,
     delivery,
-    matchScore: item.verified ? 96 : 90,
+    matchScore,
     whySuggested,
+    rankingScore,
+    rankingRank: item.rankingRank ?? null,
+    llmExplanation: item.llmExplanation ?? null,
     category: inferCategory(item.title),
     alternatives: [],
   };

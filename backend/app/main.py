@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.routers import agent, budget, cart, checkout, llm, pinterest, products, tryon
+from app.routers import agent, budget, cart, checkout, llm, pinterest, products, tryon, ranking
 
 load_dotenv()  # load .env so SERPER_API_KEY and PORT are available
 
@@ -43,6 +43,7 @@ app.include_router(llm.router)
 app.include_router(budget.router)
 app.include_router(cart.router)
 app.include_router(tryon.router)
+app.include_router(ranking.router)
 
 # Serve generated uploads (try-on fallback files) at /uploads
 uploads_dir = os.path.join(os.getcwd(), "uploads")

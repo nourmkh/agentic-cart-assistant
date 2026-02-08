@@ -7,13 +7,28 @@ from app.services.automation_service import AutomationService
 router = APIRouter(prefix="/api/checkout", tags=["checkout"])
 automation_service = AutomationService()
 
+class CartVariant(BaseModel):
+    size: Optional[str] = None
+    color: Optional[str] = None
+    material: Optional[str] = None
+
+
 class CheckoutItem(BaseModel):
-    id: str
-    name: str
-    retailer: str
-    url: str
+    # Accept both cart schema and legacy checkout schema
+    id: Optional[str] = None
+    title: Optional[str] = None
+    name: Optional[str] = None
+    retailer: Optional[str] = None
+    link: Optional[str] = None
+    url: Optional[str] = None
     price: float
-    size: str
+    currency: Optional[str] = None
+    image: Optional[str] = None
+    deliveryEstimate: Optional[str] = None
+    shortDescription: Optional[str] = None
+    variant: Optional[CartVariant] = None
+    verified: Optional[bool] = None
+    size: Optional[str] = None
     color: Optional[str] = None
 
 class UserData(BaseModel):
@@ -35,13 +50,35 @@ async def automate_checkout(request: AutomateRequest):
     """
     try:
         # Create a thread to run the synchronous automation
+        normalized_items = []
+        for item in request.items:
+            name = item.name or item.title or ""
+            url = item.url or item.link or ""
+            size = item.size or (item.variant.size if item.variant else None) or ""
+            color = item.color or (item.variant.color if item.variant else None)
+            normalized_items.append(
+                {
+                    "id": item.id or "",
+                    "name": name,
+                    "retailer": item.retailer or "",
+                    "url": url,
+                    "price": item.price,
+                    "size": size,
+                    "color": color,
+                }
+            )
+
         thread = threading.Thread(
             target=automation_service.run_checkout,
-            args=([item.dict() for item in request.items], request.user_data.dict()),
+            args=(normalized_items, request.user_data.dict()),
             daemon=True
         )
         thread.start()
         
-        return {"status": "success", "message": "Personal Shopper agent started in a new window."}
+        return {
+            "status": "success",
+            "message": "Personal Shopper agent started in a new window.",
+            "items": normalized_items,
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

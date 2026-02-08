@@ -58,6 +58,16 @@ export default function SmartCart() {
       if (!grouped.has(key)) grouped.set(key, []);
       grouped.get(key)?.push(product);
     }
+    // sort each group by rank then score
+    grouped.forEach((group, key) => {
+      group.sort((a, b) => {
+        const rankA = a.rankingRank ?? 999;
+        const rankB = b.rankingRank ?? 999;
+        if (rankA !== rankB) return rankA - rankB;
+        return (b.matchScore ?? 0) - (a.matchScore ?? 0);
+      });
+      grouped.set(key, group);
+    });
     return grouped;
   }, [products]);
 
