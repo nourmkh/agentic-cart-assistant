@@ -1,9 +1,26 @@
+import logging
 import os
 
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import agent, products, pinterest
+
+load_dotenv()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
+
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("groq").setLevel(logging.WARNING)
+logging.getLogger("app.data.pinterest").setLevel(logging.WARNING)
+logging.getLogger("app.data.pinterest.filter").setLevel(logging.WARNING)
+logging.getLogger("app.data.pinterest.sync").setLevel(logging.WARNING)
+logging.getLogger("app.data.ZEP_mcp.pinterest_sync").setLevel(logging.WARNING)
 
 app = FastAPI(title="Agentic Cart API")
 
