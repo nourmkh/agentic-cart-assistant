@@ -1,9 +1,13 @@
 import os
 
+from dotenv import load_dotenv
+
+load_dotenv()  # load .env so SERPER_API_KEY and PORT are available
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import agent, products
+from app.routers import agent, cart, products
 
 app = FastAPI(title="Agentic Cart API")
 
@@ -17,6 +21,7 @@ app.add_middleware(
 
 app.include_router(products.router)
 app.include_router(agent.router)
+app.include_router(cart.router)
 
 
 @app.get("/health")
