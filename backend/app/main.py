@@ -5,9 +5,9 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import agent, products, checkout, pinterest, llm, budget
+from app.routers import agent, budget, cart, checkout, llm, pinterest, products
 
-load_dotenv()
+load_dotenv()  # load .env so SERPER_API_KEY and PORT are available
 
 logging.basicConfig(
     level=logging.INFO,
@@ -40,6 +40,7 @@ app.include_router(checkout.router)
 app.include_router(pinterest.router)
 app.include_router(llm.router)
 app.include_router(budget.router)
+app.include_router(cart.router)
 
 
 @app.get("/health")
