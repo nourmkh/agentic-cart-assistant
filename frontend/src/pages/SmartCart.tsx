@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Sparkles, ShoppingBag, Package, Truck } from "lucide-react";
+import { ArrowLeft, Sparkles, ShoppingBag, Package, Truck, Image as ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -10,10 +10,19 @@ import {
   AlertDialogCancel,
   AlertDialogContent,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ProductCard } from "@/components/ProductCard";
 import { fetchProducts } from "@/api/products";
 import { confirmPurchase, fetchBudgetStatus, proposePurchase } from "@/api/budget";
+import { generateTryOn } from "@/api/tryon";
 import { toast } from "sonner";
+import type { Product } from "@/types/product";
 
 export default function SmartCart() {
   const navigate = useNavigate();
@@ -32,6 +41,12 @@ export default function SmartCart() {
     after: number;
     currency: string;
   } | null>(null);
+  const [tryOnOpen, setTryOnOpen] = useState(false);
+  const [tryOnProduct, setTryOnProduct] = useState<Product | null>(null);
+  const [tryOnBodyImage, setTryOnBodyImage] = useState<string | null>(null);
+  const [tryOnResultUrl, setTryOnResultUrl] = useState<string | null>(null);
+  const [tryOnLoading, setTryOnLoading] = useState(false);
+  const [tryOnError, setTryOnError] = useState<string | null>(null);
 
   const initialQuantities = useMemo(
     () => (products.length ? Object.fromEntries(products.map((p) => [p.id, 1])) : {}),
@@ -45,6 +60,61 @@ export default function SmartCart() {
 
   const handleSwap = (productId: string, altId: string) => {
     toast.success("Product swapped!", { description: `Alternative selected for comparison.` });
+  };
+
+  const inferBodyRegion = (product: Product): string => {
+    const name = `${product.name} ${product.category ?? ""}`.toLowerCase();
+    if (/(jean|pants|trouser|legging|skirt|short)/.test(name)) return "bottom";
+    if (/(shoe|sneaker|boot|heel|loafer)/.test(name)) return "feet";
+    if (/(coat|jacket|blazer|hoodie|sweater|cardigan)/.test(name)) return "top";
+    return "top";
+  };
+
+  const handleTryOn = (product: Product) => {
+    setTryOnProduct(product);
+    setTryOnBodyImage(null);
+    setTryOnResultUrl(null);
+    setTryOnError(null);
+    setTryOnOpen(true);
+  };
+
+  const handleBodyImageChange = (file: File | null) => {
+    setTryOnError(null);
+    setTryOnResultUrl(null);
+    if (!file) {
+      setTryOnBodyImage(null);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : null;
+      setTryOnBodyImage(result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleGenerateTryOn = async () => {
+    if (!tryOnProduct) return;
+    if (!tryOnBodyImage) {
+      setTryOnError("Please upload a full-body photo to continue.");
+      return;
+    }
+    setTryOnLoading(true);
+    setTryOnError(null);
+    try {
+      const result = await generateTryOn(tryOnBodyImage, [
+        {
+          image_url: tryOnProduct.image,
+          category: tryOnProduct.category,
+          body_region: inferBodyRegion(tryOnProduct),
+        },
+      ]);
+      setTryOnResultUrl(result.url);
+    } catch (e) {
+      setTryOnError("Try-on generation failed. Please try again.");
+    } finally {
+      setTryOnLoading(false);
+    }
   };
 
   const activeProducts = products.filter((p) => (effectiveQuantities[p.id] ?? 0) > 0);
@@ -177,6 +247,7 @@ export default function SmartCart() {
                   quantity={effectiveQuantities[product.id] ?? 0}
                   onQuantityChange={handleQuantityChange}
                   onSwap={handleSwap}
+                  onTryOn={handleTryOn}
                 />
               ))}
             </div>
@@ -300,6 +371,70 @@ export default function SmartCart() {
           </div>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={tryOnOpen} onOpenChange={setTryOnOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Virtual Try‑On</DialogTitle>
+            <DialogDescription>
+              Upload a full‑body photo, then generate a preview wearing
+              {tryOnProduct ? ` ${tryOnProduct.name}` : " this item"}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-3">
+              <div className="rounded-xl border border-dashed border-border p-4 text-center">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => handleBodyImageChange(e.target.files?.[0] ?? null)}
+                  className="text-xs"
+                />
+                <p className="text-[11px] text-muted-foreground mt-2">PNG or JPG, full‑body preferred.</p>
+              </div>
+
+              {tryOnBodyImage && (
+                <div className="rounded-xl overflow-hidden border border-border">
+                  <img src={tryOnBodyImage} alt="Body preview" className="w-full h-56 object-cover" />
+                </div>
+              )}
+
+              {tryOnError && <p className="text-xs text-destructive">{tryOnError}</p>}
+
+              <Button
+                onClick={handleGenerateTryOn}
+                disabled={tryOnLoading || !tryOnBodyImage}
+                className="w-full rounded-xl"
+              >
+                {tryOnLoading ? "Generating..." : "Generate Try‑On"}
+              </Button>
+            </div>
+
+            <div className="space-y-3">
+              <div className="rounded-xl border border-border p-4 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center">
+                  <ImageIcon className="w-5 h-5 text-muted-foreground" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Item</p>
+                  <p className="text-sm font-semibold text-foreground">{tryOnProduct?.name ?? "—"}</p>
+                </div>
+              </div>
+
+              {tryOnResultUrl ? (
+                <div className="rounded-xl overflow-hidden border border-border">
+                  <img src={tryOnResultUrl} alt="Try-on result" className="w-full h-72 object-cover" />
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed border-border h-72 flex items-center justify-center text-xs text-muted-foreground">
+                  Your generated try‑on will appear here.
+                </div>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
