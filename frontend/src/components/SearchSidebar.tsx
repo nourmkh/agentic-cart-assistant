@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Mic, Search, Sparkles, Image, Zap, DollarSign, Truck, Palette, Heart, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { fetchPinterestLoginUrl, fetchPinterestStatus } from "@/api/pinterest";
+import { extractRequirements } from "@/api/llm";
 
 const preferences = [
   { label: "Budget", icon: DollarSign, active: false },
@@ -35,6 +36,7 @@ export function SearchSidebar({ onStartShopping }: SearchSidebarProps) {
 
   const handleStartShopping = () => {
     setIsSearching(true);
+    extractRequirements(query, Array.from(activePrefs)).catch(() => null);
     setTimeout(() => {
       setIsSearching(false);
       onStartShopping();
