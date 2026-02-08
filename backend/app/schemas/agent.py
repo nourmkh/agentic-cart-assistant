@@ -12,7 +12,11 @@ class SearchRequest(BaseModel):
     style: str = Field(..., description="Style preference (e.g. 'casual', 'minimal')")
     target: str = Field("", description="Target audience (e.g. 'women', 'men', 'kids')")
     color: str = Field("", description="Preferred color (e.g. 'black', 'navy')")
-    items: list[str] = Field(..., description="Items to find (e.g. ['shirt', 'pants'])")
+    items: list["SearchItem"] | list[str] = Field(
+        ..., description="Items to find (e.g. ['shirt'] or [{name, color, size}])"
+    )
+    prompt: str | None = Field(default=None, description="Optional natural language prompt")
+    preferences: list[str] = Field(default_factory=list, description="Optional preference tags")
 
 
 class ProductVariants(BaseModel):
@@ -35,6 +39,14 @@ class SearchResultItem(BaseModel):
     link: str | None = Field(default=None, description="Product page URL")
     short_description: str | None = Field(default=None, description="Short product description")
     item: str | None = Field(default=None, description="Requested item category (e.g. shirt, pants)")
+
+
+class SearchItem(BaseModel):
+    """Single item specification for multi-item search."""
+
+    name: str
+    color: str = ""
+    size: str = ""
 
 
 class SearchResponseStructured(BaseModel):

@@ -16,6 +16,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 from app.schemas.agent import ProductVariants, SearchResultItem
+from app.schemas.agent import ProductVariants, SearchItem, SearchResultItem
 
 
 # --- Retailer priority (trusted first, then expand) --------------------------
@@ -204,6 +205,19 @@ def _extract_days_from_estimate(estimate: str) -> int | None:
     if "week" in s:
         return max_n * 7
     return max_n
+
+
+def _extract_delivery_hint(text: str) -> str | None:
+    if not text:
+        return None
+    lower = text.lower()
+    match = re.search(r"(\d+\s*-\s*\d+\s*(?:days?|weeks?)|\d+\s*(?:days?|weeks?))", lower)
+    if match:
+        return match.group(1).replace("weeks", "weeks").replace("week", "week").replace("days", "days").replace("day", "day")
+    ship_match = re.search(r"(\d+\s*-\s*\d+\s*(?:business\s*)?days?)", lower)
+    if ship_match:
+        return ship_match.group(1)
+    return None
 
 
 # --- Serper (Google Shopping) -------------------------------------------------
@@ -588,7 +602,19 @@ def _serper_item_to_result(item: dict[str, Any], retailer: str) -> SearchResultI
         price = float(raw_price) if raw_price else 0.0
         if price <= 0:
             return None
-        delivery = (item.get("delivery") or item.get("delivery_estimate") or "3-5 days").strip()
+        delivery = (item.get("delivery") or item.get("delivery_estimate") or "").strip()
+        if not delivery:
+            delivery_hint = None
+            for key in ["snippet", "description", "shipping", "delivery_text"]:
+                value = item.get(key)
+                if isinstance(value, str):
+                    delivery_hint = _extract_delivery_hint(value)
+                    if delivery_hint:
+                        break
+            if delivery_hint:
+                delivery = delivery_hint
+            else:
+                delivery = "3-5 days"
         image_url = _extract_image_url(item)
         description = (
             item.get("snippet")
@@ -983,6 +1009,155 @@ async def _filter_working_links(results: list[SearchResultItem]) -> list[SearchR
 # --- Main entry ---------------------------------------------------------------
 
 
+async def _search_single_item(
+    *,
+    item_name: str,
+    budget: str,
+    deadline: str,
+    size: str,
+    style: str,
+    target: str,
+    color: str,
+    api_key: str,
+    tavily_key: str,
+    max_price: float | None,
+    max_days: int | None,
+) -> tuple[list[SearchResultItem], dict[str, Any]]:
+    debug_item: dict[str, Any] = {
+        "serper_raw": 0,
+        "serper_parsed": 0,
+        "primary_only": 0,
+        "selected_initial": 0,
+        "expanded_raw": 0,
+        "expanded_parsed": 0,
+        "selected_expanded": 0,
+        "tavily_raw": 0,
+        "tavily_parsed": 0,
+        "selected_after_tavily": 0,
+        "after_enrich": 0,
+        "after_link_filter": 0,
+        "serper_organic_raw": 0,
+        "serper_organic_parsed": 0,
+        "serper_organic_after_link_filter": 0,
+        "fallback_organic_used": False,
+        "fallback_tavily_used": False,
+        "non_google_links": 0,
+        "tavily_error": None,
+        "serper_organic_error": None,
+    }
+    seen_key: set[tuple[str, str]] = set()
+    unique: list[SearchResultItem] = []
+
+    target_term = target.strip() if target else ""
+    color_term = color.strip() if color else ""
+    query = f"{item_name} {style} {target_term} {color_term} size {size}".strip()
+    if max_price:
+        query += f" under ${max_price:.0f}"
+    if PRIMARY_RETAILER_DOMAINS:
+        site_filters = " OR ".join(f"site:{d}" for d in PRIMARY_RETAILER_DOMAINS)
+        query += f" ({site_filters})"
+
+    try:
+        raw = await _serper_shopping(query, api_key, num=20)
+        debug_item["serper_raw"] = len(raw)
+        candidates = _parse_and_filter_raw(raw, max_price, max_days)
+        debug_item["serper_parsed"] = len(candidates)
+        candidates = _primary_only_if_any(candidates)
+        debug_item["primary_only"] = len(candidates)
+        for c in candidates:
+            k = (c.name, c.retailer)
+            if k not in seen_key:
+                seen_key.add(k)
+                unique.append(c)
+        unique.sort(key=lambda x: (_primary_retailer_rank(x.retailer), x.retailer.lower(), x.price))
+        selected = _select_per_item(unique, min_retailers=3)
+        debug_item["selected_initial"] = len(selected)
+
+        query_expanded = f"buy {item_name} {style} {target_term} {color_term}".strip()
+        if len(selected) < 5:
+            if max_price:
+                query_expanded += f" under ${max_price:.0f}"
+            try:
+                raw2 = await _serper_shopping(query_expanded, api_key, num=25)
+                debug_item["expanded_raw"] = len(raw2)
+                candidates2 = _parse_and_filter_raw(raw2, max_price, max_days)
+                debug_item["expanded_parsed"] = len(candidates2)
+                for c in candidates2:
+                    k = (c.name, c.retailer)
+                    if k not in seen_key:
+                        seen_key.add(k)
+                        unique.append(c)
+                unique.sort(key=lambda x: (_primary_retailer_rank(x.retailer), x.retailer.lower(), x.price))
+                selected = _select_per_item(unique, min_retailers=3)
+                debug_item["selected_expanded"] = len(selected)
+            except Exception as e2:
+                logger.warning("Serper expanded search failed for item %r: %s", item_name, e2)
+
+        if len(selected) < 5 and tavily_key:
+            tavily_query = f"{item_name} {style} {target_term} {color_term}".strip()
+            if max_price:
+                tavily_query += f" under ${max_price:.0f}"
+            try:
+                t_raw = await _tavily_search(tavily_query, tavily_key, num=10)
+                debug_item["tavily_raw"] = len(t_raw)
+                t_candidates = [r for r in (_tavily_item_to_result(x) for x in t_raw) if r]
+                debug_item["tavily_parsed"] = len(t_candidates)
+                for c in t_candidates:
+                    k = (c.name, c.retailer)
+                    if k not in seen_key:
+                        seen_key.add(k)
+                        unique.append(c)
+                unique.sort(key=lambda x: (_primary_retailer_rank(x.retailer), x.retailer.lower(), x.price))
+                selected = _select_per_item(unique, min_retailers=3)
+                debug_item["selected_after_tavily"] = len(selected)
+            except Exception as e3:
+                debug_item["tavily_error"] = str(e3)
+                logger.warning("Tavily search failed for item %r: %s", item_name, e3)
+
+        await _enrich_variants(selected, api_key, tavily_key)
+        _apply_variant_constraints(selected, size, color)
+        debug_item["after_enrich"] = len(selected)
+
+        non_google_links = sum(1 for r in selected if r.link and "google.com/search" not in r.link)
+        debug_item["non_google_links"] = non_google_links
+
+        if non_google_links == 0 and api_key:
+            debug_item["fallback_organic_used"] = True
+            try:
+                organic = await _serper_search(query_expanded, api_key, num=10)
+                debug_item["serper_organic_raw"] = len(organic)
+                organic_items = [r for r in (_serper_organic_to_result(x) for x in organic) if r]
+                debug_item["serper_organic_parsed"] = len(organic_items)
+                if organic_items:
+                    selected = _select_per_item(organic_items, min_retailers=3)
+            except Exception as e4:
+                debug_item["serper_organic_error"] = str(e4)
+                logger.warning("Serper organic fallback failed for item %r: %s", item_name, e4)
+
+            if len(selected) < 5 and tavily_key:
+                debug_item["fallback_tavily_used"] = True
+                try:
+                    t_raw = await _tavily_search(query_expanded, tavily_key, num=10)
+                    debug_item["tavily_raw"] = len(t_raw)
+                    t_candidates = [r for r in (_tavily_item_to_result(x) for x in t_raw) if r]
+                    debug_item["tavily_parsed"] = len(t_candidates)
+                    if t_candidates:
+                        selected = _select_per_item(t_candidates, min_retailers=3)
+                except Exception as e5:
+                    debug_item["tavily_error"] = str(e5)
+                    logger.warning("Tavily fallback failed for item %r: %s", item_name, e5)
+
+        selected = await _filter_working_links(selected)
+        debug_item["after_link_filter"] = len(selected)
+
+        for r in selected:
+            r.item = item_name
+        return selected, debug_item
+    except Exception as e:
+        logger.warning("Serper search failed for item %r: %s", item_name, e)
+        return [], debug_item
+
+
 async def search_products(
     budget: str,
     deadline: str,
@@ -990,7 +1165,7 @@ async def search_products(
     style: str,
     target: str,
     color: str,
-    items: list[str],
+    items: list[SearchItem],
 ) -> tuple[list[SearchResultItem], dict[str, Any]]:
     """
     Shopping search agent: prioritize trusted retailers (Nike, Adidas, Zara, etc.),
@@ -1016,145 +1191,24 @@ async def search_products(
     }
 
     if api_key:
-        for item in items:
-            debug_item: dict[str, Any] = {
-                "serper_raw": 0,
-                "serper_parsed": 0,
-                "primary_only": 0,
-                "selected_initial": 0,
-                "expanded_raw": 0,
-                "expanded_parsed": 0,
-                "selected_expanded": 0,
-                "tavily_raw": 0,
-                "tavily_parsed": 0,
-                "selected_after_tavily": 0,
-                "after_enrich": 0,
-                "after_link_filter": 0,
-                "serper_organic_raw": 0,
-                "serper_organic_parsed": 0,
-                "serper_organic_after_link_filter": 0,
-                "fallback_organic_used": False,
-                "fallback_tavily_used": False,
-                "non_google_links": 0,
-                "tavily_error": None,
-                "serper_organic_error": None,
-            }
-            seen_key: set[tuple[str, str]] = set()
-            unique: list[SearchResultItem] = []
-
-            # 1) First search: scoped to item + style + size + budget (primary retailers prioritized in sort)
-            target_term = target.strip() if target else ""
-            color_term = color.strip() if color else ""
-            query = f"{item} {style} {target_term} {color_term} size {size}".strip()
-            if max_price:
-                query += f" under ${max_price:.0f}"
-            if PRIMARY_RETAILER_DOMAINS:
-                site_filters = " OR ".join(f"site:{d}" for d in PRIMARY_RETAILER_DOMAINS)
-                query += f" ({site_filters})"
-            try:
-                raw = await _serper_shopping(query, api_key, num=20)
-                debug_item["serper_raw"] = len(raw)
-                candidates = _parse_and_filter_raw(raw, max_price, max_days)
-                debug_item["serper_parsed"] = len(candidates)
-                candidates = _primary_only_if_any(candidates)
-                debug_item["primary_only"] = len(candidates)
-                for c in candidates:
-                    k = (c.name, c.retailer)
-                    if k not in seen_key:
-                        seen_key.add(k)
-                        unique.append(c)
-                unique.sort(key=lambda x: (_primary_retailer_rank(x.retailer), x.retailer.lower(), x.price))
-                selected = _select_per_item(unique, min_retailers=3)
-                debug_item["selected_initial"] = len(selected)
-
-                # 2) If fewer than 5 products, expand search to all websites
-                query_expanded = f"buy {item} {style} {target_term} {color_term}".strip()
-                if len(selected) < 5:
-                    if max_price:
-                        query_expanded += f" under ${max_price:.0f}"
-                    try:
-                        raw2 = await _serper_shopping(query_expanded, api_key, num=25)
-                        debug_item["expanded_raw"] = len(raw2)
-                        candidates2 = _parse_and_filter_raw(raw2, max_price, max_days)
-                        debug_item["expanded_parsed"] = len(candidates2)
-                        for c in candidates2:
-                            k = (c.name, c.retailer)
-                            if k not in seen_key:
-                                seen_key.add(k)
-                                unique.append(c)
-                        unique.sort(key=lambda x: (_primary_retailer_rank(x.retailer), x.retailer.lower(), x.price))
-                        selected = _select_per_item(unique, min_retailers=3)
-                        debug_item["selected_expanded"] = len(selected)
-                    except Exception as e2:
-                        logger.warning("Serper expanded search failed for item %r: %s", item, e2)
-
-                if len(selected) < 5 and tavily_key:
-                    tavily_query = f"{item} {style} {target_term} {color_term}".strip()
-                    if max_price:
-                        tavily_query += f" under ${max_price:.0f}"
-                    try:
-                        t_raw = await _tavily_search(tavily_query, tavily_key, num=10)
-                        debug_item["tavily_raw"] = len(t_raw)
-                        t_candidates = [r for r in (_tavily_item_to_result(x) for x in t_raw) if r]
-                        debug_item["tavily_parsed"] = len(t_candidates)
-                        for c in t_candidates:
-                            k = (c.name, c.retailer)
-                            if k not in seen_key:
-                                seen_key.add(k)
-                                unique.append(c)
-                        unique.sort(key=lambda x: (_primary_retailer_rank(x.retailer), x.retailer.lower(), x.price))
-                        selected = _select_per_item(unique, min_retailers=3)
-                        debug_item["selected_after_tavily"] = len(selected)
-                    except Exception as e3:
-                        debug_item["tavily_error"] = str(e3)
-                        logger.warning("Tavily search failed for item %r: %s", item, e3)
-
-                await _enrich_variants(selected, api_key, tavily_key)
-                _apply_variant_constraints(selected, size, color)
-                debug_item["after_enrich"] = len(selected)
-
-                non_google_links = sum(
-                    1 for r in selected if r.link and "google.com/search" not in r.link
-                )
-                debug_item["non_google_links"] = non_google_links
-
-                if non_google_links == 0 and api_key:
-                    debug_item["fallback_organic_used"] = True
-                    try:
-                        organic = await _serper_search(query_expanded, api_key, num=10)
-                        debug_item["serper_organic_raw"] = len(organic)
-                        organic_items = [r for r in (_serper_organic_to_result(x) for x in organic) if r]
-                        debug_item["serper_organic_parsed"] = len(organic_items)
-                        if organic_items:
-                            selected = _select_per_item(organic_items, min_retailers=3)
-                    except Exception as e4:
-                        debug_item["serper_organic_error"] = str(e4)
-                        logger.warning("Serper organic fallback failed for item %r: %s", item, e4)
-
-                    if len(selected) < 5 and tavily_key:
-                        debug_item["fallback_tavily_used"] = True
-                        try:
-                            t_raw = await _tavily_search(query_expanded, tavily_key, num=10)
-                            debug_item["tavily_raw"] = len(t_raw)
-                            t_candidates = [r for r in (_tavily_item_to_result(x) for x in t_raw) if r]
-                            debug_item["tavily_parsed"] = len(t_candidates)
-                            if t_candidates:
-                                selected = _select_per_item(t_candidates, min_retailers=3)
-                        except Exception as e5:
-                            debug_item["tavily_error"] = str(e5)
-                            logger.warning("Tavily fallback failed for item %r: %s", item, e5)
-
-                selected = await _filter_working_links(selected)
-                debug_item["after_link_filter"] = len(selected)
-
-                debug_item["serper_organic_after_link_filter"] = len(selected)
-
-                for p in selected:
-                    all_results.append(p.model_copy(update={"item": item}))
-            except Exception as e:
-                logger.warning("Serper search failed for item %r: %s", item, e)
-
-            debug["items"][item] = debug_item
+        for spec in items:
+            item_color = spec.color or color
+            item_size = spec.size or size
+            results, debug_item = await _search_single_item(
+                item_name=spec.name,
+                budget=budget,
+                deadline=deadline,
+                size=item_size,
+                style=style,
+                target=target,
+                color=item_color,
+                api_key=api_key,
+                tavily_key=tavily_key,
+                max_price=max_price,
+                max_days=max_days,
+            )
+            all_results.extend(results)
+            debug["items"][spec.name] = debug_item
 
     # No mock fallback: return empty results if nothing matches
 

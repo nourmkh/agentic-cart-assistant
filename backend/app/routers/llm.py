@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.data.llm_extractor import extract_user_requirements
+from app.data.search_cache import set_last_extract
 
 router = APIRouter(prefix="/api/llm", tags=["llm"])
 
@@ -21,6 +22,7 @@ class LlmExtractResponse(BaseModel):
 def extract_requirements(payload: LlmExtractRequest):
     try:
         data = extract_user_requirements(payload.query, payload.preferences)
+        set_last_extract({"query": payload.query, "preferences": payload.preferences, "data": data})
         return {"data": data}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
