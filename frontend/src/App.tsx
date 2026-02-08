@@ -7,6 +7,7 @@ import Index from "./pages/Index";
 import SmartCart from "./pages/SmartCart";
 import Checkout from "./pages/Checkout";
 import NotFound from "./pages/NotFound";
+import PinterestCallback from "./pages/PinterestCallback";
 
 const queryClient = new QueryClient();
 
@@ -20,6 +21,7 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/cart" element={<SmartCart />} />
           <Route path="/checkout" element={<Checkout />} />
+          <Route path="/auth/pinterest-callback" element={<PinterestCallback />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
