@@ -95,9 +95,8 @@ The automation engine executes these steps when "Confirm & Pay" is clicked:
    - **Auto-Redirect**: Detects "Go to Checkout" modals or finds the cart icon to navigate to the final purchase screen.
    - **Human Handoff**: Pauses for the user to securely enter payment.
 
----
-
 flowchart TD
+
   subgraph FE[Frontend · React / Vite]
     FE1[SmartCart Page]
     FE2[Virtual Try-On Modal]
@@ -122,7 +121,7 @@ flowchart TD
 
   subgraph EXT[External Services]
     PIN[Pinterest API]
-    SERP[Serper / Tavily]
+    SERP[Serper · Tavily]
     RETAIL[E-commerce Sites]
     IMG[AI Image Gen]
   end
@@ -148,6 +147,7 @@ flowchart TD
   A1 --> RETAIL
   RETAIL --> A1
   A1 --> FE1
+
 
 ## 🚀 Installation & Setup
 
