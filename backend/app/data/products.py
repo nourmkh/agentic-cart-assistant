@@ -54,6 +54,23 @@ PRODUCTS = [
         "category": "Fashion",
         "alternatives": [],
     },
+    {
+        "id": "zn-1",
+        "name": "Veste Homme Zen",
+        "brand": "Zen",
+        "price": 89.9,
+        "size": "L",
+        "color": "Bleu",
+        "image": "https://static.smartcart.com/placeholders/zen_veste.jpg",
+        "url": "https://zen.com.tn/fr/produit/6577-veste",
+        "rating": 4.5,
+        "retailer": "zen",
+        "delivery": "Express · 2 days",
+        "matchScore": 94,
+        "whySuggested": "Stylish and comfortable jacket. Matches your preference for minimalist outerwear.",
+        "category": "Fashion",
+        "alternatives": [],
+    },
 ]
 
 def get_products():
