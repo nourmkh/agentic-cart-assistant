@@ -152,7 +152,7 @@ flowchart TD
   A1 --> RETAIL
   RETAIL --> A1
   A1 --> FE1
-
+```
 
 ## 🚀 Installation & Setup
 
