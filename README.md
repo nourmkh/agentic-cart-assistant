@@ -97,6 +97,63 @@ The automation engine executes these steps when "Confirm & Pay" is clicked:
 
 ---
 
+
+## 🔄 System Workflow
+
+```mermaid
+flowchart TD
+  subgraph FE[Frontend · React / Vite]
+    FE1[SmartCart Page]
+    FE2[Virtual Try-On Modal]
+    FE3[Pinterest Connect UI]
+    FE4[Checkout Intent]
+  end
+
+  subgraph BE[Backend · FastAPI]
+    C1["POST /api/cart"]
+    R1[Ranking Service]
+    S1[Retail Search Service]
+    A1[Automation Service (Playwright Agent)]
+    T1["POST /api/tryon/generate"]
+    P1["POST /api/pinterest/connect"]
+  end
+
+  subgraph Z[Zep Cloud · MCP]
+    ZU[User Memory]
+    ZT[Conversation Thread]
+    ZCTX[Style DNA Context]
+  end
+
+  subgraph EXT[External Services]
+    PIN[Pinterest API]
+    SERP[Serper / Tavily]
+    RETAIL[E-commerce Sites]
+    IMG[AI Image Gen]
+  end
+
+  FE1 --> C1
+  C1 --> R1
+  R1 --> ZCTX
+  ZCTX --> R1
+  R1 --> S1
+  S1 --> SERP
+  S1 --> FE1
+
+  FE3 --> P1
+  P1 --> PIN
+  PIN --> ZU
+  ZU --> ZCTX
+
+  FE2 --> T1
+  T1 --> IMG
+  IMG --> FE2
+
+  FE4 --> A1
+  A1 --> RETAIL
+  RETAIL --> A1
+  A1 --> FE1
+
+
 ## 🚀 Installation & Setup
 
 ### Prerequisites
