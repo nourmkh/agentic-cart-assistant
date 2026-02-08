@@ -50,6 +50,7 @@ python -m venv .venv
 # source .venv/bin/activate
 
 # Install dependencies
+playwright install #this is a must
 pip install -r requirements.txt
 
 # Start backend server (must use port 3001 for frontend)

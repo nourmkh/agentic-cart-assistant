@@ -55,6 +55,7 @@ export function SearchSidebar({ onStartShopping }: SearchSidebarProps) {
     }
     try {
       await setBudget(value, "USD");
+      localStorage.setItem("budget_balance", String(value));
       setBudgetStatus("Budget saved.");
       setBudgetLocked(true);
     } catch {
@@ -79,6 +80,13 @@ export function SearchSidebar({ onStartShopping }: SearchSidebarProps) {
   const refreshBudget = async () => {
     try {
       const status = await fetchBudgetStatus();
+      const cached = localStorage.getItem("budget_balance");
+      if ((status.budget_limit === null || status.wallet_balance === 0) && cached) {
+        const cachedValue = Number(cached);
+        if (Number.isFinite(cachedValue) && cachedValue > 0) {
+          await setBudget(cachedValue, "USD");
+        }
+      }
       if (status.wallet_balance >= 0) {
         setBudgetValue(String(status.wallet_balance));
         localStorage.setItem("budget_balance", String(status.wallet_balance));
