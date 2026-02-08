@@ -5,17 +5,89 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ShoppingBag, CreditCard, Lock, CheckCircle2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { AgentLog } from "@/components/AgentLog";
+import { RotatingCard3D } from "@/components/RotatingCard3D";
 import { fetchProducts } from "@/api/products";
+import { automateCheckout } from "@/api/checkout";
+import productHeadphones from "@/assets/product-headphones.jpg";
+import productSneakers from "@/assets/product-sneakers.jpg";
+import productWatch from "@/assets/product-watch.jpg";
+import productBag from "@/assets/product-bag.jpg";
+
+const imageMap: Record<string, string> = {
+  headphones: productHeadphones,
+  sneakers: productSneakers,
+  watch: productWatch,
+  bag: productBag,
+};
+
+function getImageSrc(image: string): string {
+  if (image.startsWith("http://") || image.startsWith("https://")) return image;
+  return imageMap[image] ?? image;
+}
+
+type FocusedField = "number" | "name" | "expiry" | "cvc" | null;
+
+function formatCardNumberInput(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 16);
+  return digits.replace(/(.{4})/g, "$1 ").trim();
+}
+
+function formatExpiryInput(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 4);
+  if (digits.length >= 2) return `${digits.slice(0, 2)} / ${digits.slice(2)}`;
+  return digits;
+}
 
 export default function Checkout() {
   const navigate = useNavigate();
   const [confirmed, setConfirmed] = useState(false);
+  const [isAutomating, setIsAutomating] = useState(false);
+  const [automationMessage, setAutomationMessage] = useState("");
+  const [cardNumber, setCardNumber] = useState("");
+  const [cardName, setCardName] = useState("");
+  const [expiry, setExpiry] = useState("");
+  const [cvc, setCvc] = useState("");
+  const [focusedField, setFocusedField] = useState<FocusedField>(null);
   const { data: products = [], isLoading, error } = useQuery({ queryKey: ["products"], queryFn: fetchProducts });
   const subtotal = products.reduce((s, p) => s + p.price, 0);
 
-  const handleConfirm = () => {
-    setConfirmed(true);
+  const handleConfirm = async () => {
+    setIsAutomating(true);
+    setAutomationMessage("Initializing Personal Shopper agent...");
+
+    try {
+      const response = await automateCheckout({
+        items: products.map(p => ({
+          id: p.id,
+          name: p.name,
+          retailer: p.retailer,
+          url: p.url || "",
+          price: p.price,
+          size: p.size
+        })),
+        user_data: {
+          name: cardName,
+          email: "user@example.com", // In a real app, this would come from a form or auth context
+          address: "123 Fashion St",
+          city: "Paris",
+          zip: "75001"
+        }
+      });
+
+      setAutomationMessage(response.message);
+
+      // We don't wait for the automation to finish (it stays open in background)
+      // but we show the success state in our app
+      setTimeout(() => {
+        setIsAutomating(false);
+        setConfirmed(true);
+      }, 2000);
+
+    } catch (err) {
+      console.error("Automation failed:", err);
+      setIsAutomating(false);
+      setConfirmed(true); // Fallback for demo
+    }
   };
 
   return (
@@ -40,7 +112,37 @@ export default function Checkout() {
 
       <div className="max-w-5xl mx-auto px-4 py-6">
         <AnimatePresence mode="wait">
-          {confirmed ? (
+          {isAutomating ? (
+            <motion.div
+              key="automating"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="flex flex-col items-center justify-center py-20 text-center"
+            >
+              <div className="relative w-24 h-24 mb-8">
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                  className="absolute inset-0 border-4 border-primary/20 border-t-primary rounded-full"
+                />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <Sparkles className="w-8 h-8 text-primary animate-pulse" />
+                </div>
+              </div>
+              <h2 className="text-xl font-bold text-foreground mb-3">AI Agent is Shopping for You</h2>
+              <p className="text-muted-foreground text-sm max-w-sm mb-6">
+                {automationMessage || "Opening brand websites and adding items to carts..."}
+              </p>
+              <div className="flex gap-2">
+                {["Zara", "Stradivarius"].map((retailer) => (
+                  <div key={retailer} className="px-3 py-1 rounded-full bg-secondary text-[10px] font-bold text-muted-foreground animate-pulse">
+                    {retailer}
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          ) : confirmed ? (
             <motion.div
               key="success"
               initial={{ opacity: 0, scale: 0.95 }}
@@ -93,25 +195,58 @@ export default function Checkout() {
                   <p className="text-[11px] text-muted-foreground mb-4">
                     Single entry — your AI agent handles multi-retailer checkout automatically.
                   </p>
+
+                  <RotatingCard3D
+                    cardNumber={cardNumber}
+                    cardName={cardName}
+                    expiry={expiry}
+                    cvc={cvc}
+                    isFlipped={focusedField === "cvc"}
+                    className="mb-6"
+                  />
+
                   <div className="grid grid-cols-2 gap-3">
-                    <Input placeholder="Full Name" className="col-span-2 rounded-xl bg-secondary/50 border-0 text-sm" />
+                    <Input
+                      placeholder="Full Name"
+                      value={cardName}
+                      onChange={(e) => setCardName(e.target.value)}
+                      onFocus={() => setFocusedField("name")}
+                      onBlur={() => setFocusedField(null)}
+                      className="col-span-2 rounded-xl bg-secondary/50 border-0 text-sm"
+                    />
                     <Input placeholder="Email" className="col-span-2 rounded-xl bg-secondary/50 border-0 text-sm" />
-                    <Input placeholder="Card Number" className="col-span-2 rounded-xl bg-secondary/50 border-0 text-sm" />
-                    <Input placeholder="MM / YY" className="rounded-xl bg-secondary/50 border-0 text-sm" />
-                    <Input placeholder="CVC" className="rounded-xl bg-secondary/50 border-0 text-sm" />
+                    <Input
+                      placeholder="Card Number"
+                      value={cardNumber}
+                      onChange={(e) => setCardNumber(formatCardNumberInput(e.target.value))}
+                      onFocus={() => setFocusedField("number")}
+                      onBlur={() => setFocusedField(null)}
+                      maxLength={19}
+                      className="col-span-2 rounded-xl bg-secondary/50 border-0 text-sm font-mono"
+                    />
+                    <Input
+                      placeholder="MM / YY"
+                      value={expiry}
+                      onChange={(e) => setExpiry(formatExpiryInput(e.target.value))}
+                      onFocus={() => setFocusedField("expiry")}
+                      onBlur={() => setFocusedField(null)}
+                      maxLength={7}
+                      className="rounded-xl bg-secondary/50 border-0 text-sm font-mono"
+                    />
+                    <Input
+                      placeholder="CVC"
+                      value={cvc}
+                      onChange={(e) => setCvc(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                      onFocus={() => setFocusedField("cvc")}
+                      onBlur={() => setFocusedField(null)}
+                      maxLength={4}
+                      type="password"
+                      className="rounded-xl bg-secondary/50 border-0 text-sm font-mono"
+                    />
                     <Input placeholder="Shipping Address" className="col-span-2 rounded-xl bg-secondary/50 border-0 text-sm" />
                     <Input placeholder="City" className="rounded-xl bg-secondary/50 border-0 text-sm" />
                     <Input placeholder="ZIP Code" className="rounded-xl bg-secondary/50 border-0 text-sm" />
                   </div>
-                </motion.div>
-
-                {/* Agent Log */}
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.15 }}
-                >
-                  <AgentLog />
                 </motion.div>
               </div>
 
@@ -129,10 +264,12 @@ export default function Checkout() {
                   <div className="space-y-3 mb-4">
                     {products.map((p) => (
                       <div key={p.id} className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-secondary" />
+                        <div className="w-10 h-10 rounded-lg overflow-hidden bg-secondary">
+                          <img src={getImageSrc(p.image)} alt={p.name} className="w-full h-full object-cover" />
+                        </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-medium text-foreground truncate">{p.name}</p>
-                          <p className="text-[11px] text-muted-foreground">{p.retailer}</p>
+                          <p className="text-[11px] text-muted-foreground">{p.retailer} · Size: {p.size}</p>
                         </div>
                         <span className="text-xs font-semibold text-foreground">${p.price}</span>
                       </div>

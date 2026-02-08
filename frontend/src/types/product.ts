@@ -3,8 +3,11 @@ export interface Product {
   name: string;
   brand: string;
   price: number;
-  originalPrice?: number;
+  size: string;
+  /** Local asset key (e.g. "headphones") or full image URL (Zara, Stradivarius, etc.) */
   image: string;
+  /** Product page URL on retailer site (e.g. Zara, Stradivarius) */
+  url?: string;
   rating: number;
   retailer: string;
   delivery: string;

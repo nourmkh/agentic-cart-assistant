@@ -30,10 +30,6 @@ export default function SmartCart() {
 
   const activeProducts = products.filter((p) => (effectiveQuantities[p.id] ?? 0) > 0);
   const subtotal = activeProducts.reduce((sum, p) => sum + p.price * (effectiveQuantities[p.id] ?? 0), 0);
-  const savings = activeProducts.reduce(
-    (sum, p) => sum + ((p.originalPrice || p.price) - p.price) * (effectiveQuantities[p.id] ?? 0),
-    0
-  );
 
   const handleOptimize = () => {
     setOptimizing(true);
@@ -105,9 +101,12 @@ export default function SmartCart() {
 
               <div className="space-y-2.5 mb-4">
                 {activeProducts.map((p) => (
-                  <div key={p.id} className="flex justify-between text-xs">
-                    <span className="text-muted-foreground">{p.name} × {effectiveQuantities[p.id] ?? 0}</span>
-                    <span className="text-foreground font-medium">${p.price * (effectiveQuantities[p.id] ?? 0)}</span>
+                  <div key={p.id} className="flex justify-between items-start gap-4 text-xs">
+                    <div className="flex-1">
+                      <p className="text-foreground font-medium line-clamp-1">{p.name}</p>
+                      <p className="text-[10px] text-muted-foreground">Size: {p.size} · Qty: {effectiveQuantities[p.id] ?? 0}</p>
+                    </div>
+                    <span className="text-foreground font-semibold">${p.price * (effectiveQuantities[p.id] ?? 0)}</span>
                   </div>
                 ))}
               </div>
@@ -117,12 +116,6 @@ export default function SmartCart() {
                   <span className="text-muted-foreground">Subtotal</span>
                   <span className="text-foreground font-medium">${subtotal}</span>
                 </div>
-                {savings > 0 && (
-                  <div className="flex justify-between text-xs">
-                    <span className="text-accent font-medium">You save</span>
-                    <span className="text-accent font-medium">-${savings}</span>
-                  </div>
-                )}
                 <div className="flex justify-between text-xs">
                   <span className="flex items-center gap-1 text-muted-foreground">
                     <Truck className="w-3 h-3" /> Delivery

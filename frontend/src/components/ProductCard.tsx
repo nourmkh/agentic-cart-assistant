@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Star, Info, ChevronDown, Minus, Plus, ArrowRightLeft } from "lucide-react";
+import { Star, Info, ChevronDown, Minus, Plus, ArrowRightLeft, ExternalLink, Trash2 } from "lucide-react";
 import type { Product } from "@/types/product";
 import productHeadphones from "@/assets/product-headphones.jpg";
 import productSneakers from "@/assets/product-sneakers.jpg";
@@ -13,6 +13,11 @@ const imageMap: Record<string, string> = {
   watch: productWatch,
   bag: productBag,
 };
+
+function getImageSrc(image: string): string {
+  if (image.startsWith("http://") || image.startsWith("https://")) return image;
+  return imageMap[image] ?? image;
+}
 
 interface ProductCardProps {
   product: Product;
@@ -36,7 +41,7 @@ export function ProductCard({ product, index, quantity, onQuantityChange, onSwap
       {/* Image */}
       <div className="relative aspect-square bg-secondary/50 overflow-hidden">
         <img
-          src={imageMap[product.image]}
+          src={getImageSrc(product.image)}
           alt={product.name}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
         />
@@ -44,11 +49,16 @@ export function ProductCard({ product, index, quantity, onQuantityChange, onSwap
         <div className="absolute top-3 left-3 gradient-bg text-primary-foreground text-[11px] font-bold px-2.5 py-1 rounded-lg shadow-glow">
           {product.matchScore}% match
         </div>
-        {product.originalPrice && (
-          <div className="absolute top-3 right-3 bg-accent text-accent-foreground text-[11px] font-bold px-2.5 py-1 rounded-lg">
-            {Math.round((1 - product.price / product.originalPrice) * 100)}% OFF
-          </div>
-        )}
+        {/* Remove item */}
+        <button
+          type="button"
+          onClick={() => onQuantityChange(product.id, 0)}
+          className="absolute bottom-3 right-3 p-2 rounded-lg bg-background/90 hover:bg-destructive/90 text-muted-foreground hover:text-destructive-foreground transition-colors shadow-sm"
+          title="Remove from cart"
+          aria-label="Remove from cart"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
       </div>
 
       {/* Content */}
@@ -90,17 +100,28 @@ export function ProductCard({ product, index, quantity, onQuantityChange, onSwap
             <span className="text-xs font-medium text-foreground">{product.rating}</span>
           </div>
           <span className="text-[11px] text-muted-foreground">· {product.retailer}</span>
+          <span className="text-[11px] font-semibold bg-secondary/80 px-1.5 py-0.5 rounded ml-auto">{product.size}</span>
         </div>
 
         {/* Price */}
         <div className="flex items-baseline gap-2 mb-3">
           <span className="text-lg font-bold text-foreground">${product.price}</span>
-          {product.originalPrice && (
-            <span className="text-xs text-muted-foreground line-through">${product.originalPrice}</span>
-          )}
         </div>
 
         <p className="text-[11px] text-accent font-medium mb-3">{product.delivery}</p>
+
+        {/* View on retailer site (Zara, Stradivarius, etc.) */}
+        {product.url && (
+          <a
+            href={product.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-[11px] text-accent hover:underline mb-3"
+          >
+            <ExternalLink className="w-3 h-3" />
+            View on {product.retailer}
+          </a>
+        )}
 
         {/* Quantity Selector */}
         <div className="flex items-center justify-between mb-3">

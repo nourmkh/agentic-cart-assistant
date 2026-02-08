@@ -52,7 +52,7 @@ python -m venv .venv
 # Install dependencies
 pip install -r requirements.txt
 
-# Start backend server
-uvicorn app.main:app --reload
+# Start backend server (must use port 3001 for frontend)
+uvicorn app.main:app --reload --port 3001
 
 Backend will run at: http://localhost:3001
