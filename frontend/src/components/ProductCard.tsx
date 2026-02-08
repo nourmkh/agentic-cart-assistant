@@ -25,9 +25,10 @@ interface ProductCardProps {
   quantity: number;
   onQuantityChange: (id: string, qty: number) => void;
   onSwap: (productId: string, altId: string) => void;
+  onTryOn: (product: Product) => void;
 }
 
-export function ProductCard({ product, index, quantity, onQuantityChange, onSwap }: ProductCardProps) {
+export function ProductCard({ product, index, quantity, onQuantityChange, onSwap, onTryOn }: ProductCardProps) {
   const [showAlts, setShowAlts] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
 
@@ -45,6 +46,13 @@ export function ProductCard({ product, index, quantity, onQuantityChange, onSwap
           alt={product.name}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
         />
+        <button
+          type="button"
+          onClick={() => onTryOn(product)}
+          className="absolute bottom-3 left-3 px-3 py-1.5 rounded-lg bg-background/90 hover:bg-primary text-[11px] font-semibold text-foreground hover:text-primary-foreground transition-colors shadow-sm"
+        >
+          Try On
+        </button>
         {/* Match Score Badge */}
         <div className="absolute top-3 left-3 gradient-bg text-primary-foreground text-[11px] font-bold px-2.5 py-1 rounded-lg shadow-glow">
           {product.matchScore}% match
