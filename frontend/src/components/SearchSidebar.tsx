@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mic, Search, Sparkles, Image, Zap, DollarSign, Truck, Palette, Heart, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { fetchPinterestLoginUrl, fetchPinterestStatus } from "@/api/pinterest";
 
 const preferences = [
   { label: "Budget", icon: DollarSign, active: false },
@@ -20,6 +21,9 @@ export function SearchSidebar({ onStartShopping }: SearchSidebarProps) {
   const [activePrefs, setActivePrefs] = useState<Set<string>>(new Set());
   const [isListening, setIsListening] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+  const [isPinterestConnected, setIsPinterestConnected] = useState(false);
+  const [isPinterestLoading, setIsPinterestLoading] = useState(false);
+  const [pinterestError, setPinterestError] = useState<string | null>(null);
 
   const togglePref = (label: string) => {
     setActivePrefs((prev) => {
@@ -35,6 +39,34 @@ export function SearchSidebar({ onStartShopping }: SearchSidebarProps) {
       setIsSearching(false);
       onStartShopping();
     }, 2000);
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+    fetchPinterestStatus()
+      .then((status) => {
+        if (isMounted) setIsPinterestConnected(status.connected);
+      })
+      .catch(() => {
+        if (isMounted) setIsPinterestConnected(false);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handlePinterestConnect = async () => {
+    setIsPinterestLoading(true);
+    setPinterestError(null);
+    try {
+      const { oauth_url } = await fetchPinterestLoginUrl();
+      window.location.href = oauth_url;
+    } catch {
+      setIsPinterestLoading(false);
+      setPinterestError("Failed to start Pinterest connection. Is the backend running?");
+      // eslint-disable-next-line no-console
+      console.error("Pinterest login failed");
+    }
   };
 
   return (
@@ -132,10 +164,24 @@ export function SearchSidebar({ onStartShopping }: SearchSidebarProps) {
           animate={{ opacity: 1 }}
           transition={{ delay: 0.5 }}
         >
-          <button className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-border text-muted-foreground text-xs font-medium hover:border-primary/40 hover:text-primary transition-all duration-200">
-            <Image className="w-3.5 h-3.5" />
-            Import from Pinterest board
-          </button>
+          {isPinterestConnected ? (
+            <div className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border bg-secondary/40 text-xs font-medium text-secondary-foreground">
+              <Image className="w-3.5 h-3.5" />
+              Pinterest is connected
+            </div>
+          ) : (
+            <button
+              onClick={handlePinterestConnect}
+              disabled={isPinterestLoading}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-border text-muted-foreground text-xs font-medium hover:border-primary/40 hover:text-primary transition-all duration-200 disabled:opacity-60"
+            >
+              <Image className="w-3.5 h-3.5" />
+              {isPinterestLoading ? "Connecting..." : "Import from Pinterest board"}
+            </button>
+          )}
+          {pinterestError ? (
+            <p className="mt-2 text-[11px] text-destructive text-center">{pinterestError}</p>
+          ) : null}
         </motion.div>
 
         {/* Start Shopping Button */}
