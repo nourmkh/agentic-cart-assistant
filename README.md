@@ -10,144 +10,140 @@ The **Agentic Cart Assistant** is a next-generation AI shopping companion that r
 
 ---
 
-## 🏗️ How It Was Built: Frontend to Backend
+## 🏗️ Architecture & Data Flow
 
-This project uses a decoupled architecture where the **Frontend** handles the user experience and the **Backend** powers the AI agents. Here is a detailed breakdown of how we built it:
+The system orchestrates a complex interaction between the user, AI agents, and external services. Below is the high-level data flow rooted in **Zep MCP** for long-term memory and **FastAPI** for orchestration.
 
-### 1️⃣ The Frontend (User Interface)
+```mermaid
+flowchart TD
+    %% Styling
+    classDef frontend fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:#0277bd
+    classDef backend fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
+    classDef memory fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c
+    classDef external fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#bf360c
 
-We started with a robust, modern React stack designed for speed and interactivity.
+    subgraph FE [Frontend]
+        direction TB
+        FE1[SmartCart Page]:::frontend
+        FE2[Try-On Modal]:::frontend
+        FE3[Pinterest Connect]:::frontend
+    end
 
-- **Fast Setup**: Initialized with **Vite** for lightning-fast HMR (Hot Module Replacement).
-- **Styling**: Used **Tailwind CSS** for utility-first styling and **shadcn/ui** for accessible, pre-built components (buttons, dialogs, cards).
-- **State Management**: Implemented **TanStack Query (React Query)** to handle async data fetching (search results, cart state) with caching and auto-refetching.
-- **Routing**: **React Router** manages navigation between the Search, Smart Cart, and Checkout pages.
+    subgraph BE [Backend FastAPI]
+        direction TB
+        C1["POST /api/cart"]:::backend
+        R1[Ranking Service]:::backend
+        S1[Retail Search Service]:::backend
+        P1["POST /api/pinterest/connect"]:::backend
+        T1["POST /api/tryon/generate"]:::backend
+    end
 
-**Key Components:**
-- `SmartCart.tsx`: The heart of the frontend. It displays aggregated items, handles quantity logic, and triggers the "Optimize Cart" features.
-- `Checkout.tsx`: A simulated checkout page that collects user intent before handing off to the AI agent.
+    subgraph Z [Zep Cloud]
+        direction TB
+        ZU[User]:::memory
+        ZT[Thread]:::memory
+        ZCTX[Context Template]:::memory
+    end
 
-### 2️⃣ The Backend (Intelligence Layer)
+    subgraph EXT [External APIs]
+        direction TB
+        PIN[Pinterest API]:::external
+        GROQ[Groq LLM]:::external
+        AZ[Azure OpenAI Image]:::external
+        BLOB[Azure Blob Storage]:::external
+    end
 
-The backend is built with **FastAPI** (Python), chosen for its speed and native support for asynchronous operations—critical for handling multiple AI agents simultaneously.
+    %% Connections
+    FE3 --> P1
+    P1 --> PIN
+    P1 -->|write| ZU
+    P1 -->|write| ZT
+    P1 -->|write| ZCTX
 
-- **API Routes**: Organized via `APIRouter` to keep code modular (`/products`, `/agent`, `/cart`).
-- **Data Models**: **Pydantic** ensures strict type validation for all data passing between frontend and backend.
+    FE1 --> C1
+    C1 --> S1
+    S1 --> C1
+    C1 --> R1
+    R1 -->|read| ZT
+    R1 -->|read| ZCTX
+    R1 --> GROQ
+    R1 --> C1
+    C1 --> FE1
 
-### 3️⃣ The Core Logic: "Universal Intelligent Agent"
+    FE2 --> T1
+    T1 --> AZ
+    T1 --> BLOB
+    T1 --> FE2
+```
 
-The `AutomationService` (`backend/app/services/automation_service.py`) is the most complex part of the system. It replaces traditional, brittle web scrapers with a **cognitive agent**.
+### 🧠 Core Components
 
-- **Playwright Engine**: We use the synchronous Playwright API to drive a real Chromium browser instance.
-- **Stealth Mode**: `playwright-stealth` injects scripts to mask the bot's fingerprint, making it look like a regular human user (plugins, navigator languages, etc.).
-- **DOM Introspection**: Instead of hardcoding selectors like `#add-to-cart`, the agent scans the page's DOM for **semantic clues**:
-  - Buttons containing words like "Add", "Bag", "Panier".
-  - Dropdowns near labels like "Size" or "Taille".
-  - Color swatches matching the user's selected variant.
-
-### 4️⃣ The Integration: Zep MCP & Pinterest
-
-- **Zep Memory**: We integrated **Zep's Memory Context Protocol (MCP)** to give the agent long-term memory. It stores a "Style DNA" based on user interactions.
-- **Pinterest Scraper**: A background service scrapes the user's Pinterest boards to seed this Style DNA with visual preferences.
+1.  **Backend (FastAPI)**: The central brain. Handles cart logic (`C1`), invokes ranking (`R1`), and connects to Pinterest (`P1`) and Try-On services (`T1`).
+2.  **Zep Cloud**: The memory layer. Stores User profiles (`ZU`), conversational Threads (`ZT`), and Context Templates (`ZCTX`) used for personalized ranking.
+3.  **External AI**: 
+    - **Groq LLM**: Powers the intelligent ranking and decision making.
+    - **Azure OpenAI**: Generates the virtual try-on images.
+    - **Pinterest API**: Sources user style preferences.
 
 ---
 
 ## ✨ Key Features
 
 - **🤖 Universal Autonomous Agent**
-  - **Retailer Agnostic**: Analyzes **any** e-commerce site structure on the fly.
-  - **Smart Fallbacks**: If a link is broken, it automatically uses the retailer's search bar to find the item.
+  - **Heuristic DOM Analysis**: Instead of brittle hardcoded selectors, the agent uses a **scoring algorithm** to "read" the page structure in real-time. It identifies "Add to Cart" buttons, size dropdowns, and color swatches by analyzing semantic HTML attributes, aria-labels, and relative positioning.
+  - **Self-Healing Fallbacks**: If a direct product link redirects to a 404 or category page (common with dynamic inventory), the agent detects the mismatch and actively uses the retailer's internal site search to locate the specific product match.
+  - **Stealth Infrastructure**: Built on top of `playwright-stealth`, the agent automatically injects evasive scripts to bypass sophisticated bot detection, ensuring high success rates on major retail sites.
 
-- **🧠 Style DNA & Hyper-Personalization**
-  - **Contextual Ranking**: Search results are re-ranked based on your unique style profile stored in Zep.
+- **� Style DNA & Memory Context (MCP)**
+  - **Long-Term Memory (Zep)**: The system maintains a persistent `UserMemory` graph that evolves with every interaction. It learns preferred brands, fit preferences (e.g., "likes wide leg"), and color palettes.
+  - **Contextual Re-Ranking**: Search results are passed through an LLM (Groq) that re-ranks items based on your stored **Style DNA**. If you prefer minimalist aesthetics, flashy items are deprioritized automatically.
+  - **Pinterest Integration**: Connect your account to have the system scrape your boards, extract visual attributes, and seed your Style DNA with your aspirational wardrobe.
 
 - **🔎 Intelligent Product Search**
-  - **Global Reach**: Aggregates products from across the web using Serper/Tavily APIs.
+  - **Global Aggregation**: Simultaneously queries multiple search APIs (Serper, Tavily) to fetch real-time product data from across the open web, not just a closed catalog.
+  - **Clean Data Normalization**: Raw search results are parsed, cleaned, and normalized into a unified schema, removing ads and irrelevant content before they reach the user.
 
 - **🛒 Smart Cart & Budgeting**
-  - **Unified Cart**: Manage items from multiple retailers in one view.
-  - **Budget Guard**: Real-time wallet monitoring.
+  - **Unified Checkout**: Add items from American Eagle, Gap, and bespoke boutiques into a single cart session.
+  - **Financial Guardrails**: The "Budget Guard" monitors your total cart value against a preset limit, offering real-time warnings to prevent overspending.
 
 - **👗 Virtual Try-On**
-  - **AI Image Gen**: Upload a photo to preview how items look on you.
+  - **Generative AI Preview**: A dedicated pipeline sends product images and user photos to **Azure OpenAI**, generating realistic visualizations of how the clothing would look on the user.
 
 ---
 
 ## 🤖 Detailed Checkout Automation Flow
 
-The automation engine executes these steps when "Confirm & Pay" is clicked:
+When you click **"Confirm & Pay"**, the `AutomationService` orchestrates a complex sequence of autonomous actions:
 
-### 1. **Session & Stealth**
-   - Launches browser with **persistent context** (cookies, login sessions preserved).
-   - Applies stealth masking to evade bot detection.
+### 1. **Persistent Session Initialization**
+   - The agent launches a browser context with a **persistent user data directory**. This preserves your login sessions, cookies, and local storage, ensuring you don't need to re-login to retailer sites every time.
+   - It rotates user-agents and applies fingerprint masking to appear indistinguishable from a standard Chrome user.
 
-### 2. **Navigation & Verification**
-   - Navigates to the product URL.
-   - **Smart Check**: Verifies if it's a product page. If not (e.g., category page), it triggers **Autopilot Search**:
-     - Finds the search bar -> Types product name -> Clicks result -> Verified.
+### 2. **Navigation & Smart Verification**
+   - **Direct Navigation**: It attempts to load the specific product URL.
+   - **Page Type Detection**: It runs a heuristic check to confirm it has landed on a Product Detail Page (PDP). It looks for "Add to Cart" buttons and price elements.
+   - **Autopilot Correction**: If the check fails (e.g., you are on a category page), it triggers a recovery workflow:
+     1. Locates the site's search bar.
+     2. Types the exact product name.
+     3. Selects the most relevant result from the dropdown or search results page.
+     4. Verifies the new page is the correct product.
 
 ### 3. **Heuristic Variant Selection**
-   - **Color**: Matches "Black", "Noir", "Tarte à la cerise" against DOM text/attributes.
-   - **Size**: Identifies size selectors by proximity to "Size" labels.
+   - **Color Matching**: The agent scans the DOM for elements matching your selected color (e.g., "Tarte à la cerise"). It handles multi-language sites by checking against a dictionary of color terms.
+   - **Size Intelligence**: It identifies size selectors not just by ID, but by context—finding dropdowns or button grids located near labels like "Size", "Taille", or "Dimensions".
 
-### 4. **Cart & Handoff**
-   - Clicks "Add to Cart" (multilingual support).
-   - **Auto-Redirect**: Detects "Go to Checkout" modals or finds the cart icon to navigate to the final purchase screen.
-   - **Human Handoff**: Pauses for the user to securely enter payment.
+### 4. **Dynamic Cart Interaction**
+   - **Action Execution**: It clicks the "Add to Cart" button (detecting variations like "Add to Bag", "Ajouter au panier").
+   - **Success Verification**: It waits for visual confirmation, such as a "Added to Cart" toast notification or a cart counter update.
 
-flowchart TD
+### 5. **Checkout Handoff**
+   - **Pathfinding**: The agent actively hunts for the path to checkout. It prioritizes post-add modals ("View Bag") and fallback header icons.
+   - **Secure Handoff**: Once on the checkout page, the agent intentionally pauses and hands control back to you. This "Human-in-the-Loop" design ensures that sensitive credit card details are entered manually by you, maintaining zero-trust security.
 
-  subgraph FE[Frontend · React / Vite]
-    FE1[SmartCart Page]
-    FE2[Virtual Try-On Modal]
-    FE3[Pinterest Connect UI]
-    FE4[Checkout Intent]
-  end
+---
 
-  subgraph BE[Backend · FastAPI]
-    C1["POST /api/cart"]
-    R1[Ranking Service]
-    S1[Retail Search Service]
-    A1["Automation Service · Playwright Agent"]
-    T1["POST /api/tryon/generate"]
-    P1["POST /api/pinterest/connect"]
-  end
-
-  subgraph Z[Zep Cloud · MCP]
-    ZU[User Memory]
-    ZT[Conversation Thread]
-    ZCTX[Style DNA Context]
-  end
-
-  subgraph EXT[External Services]
-    PIN[Pinterest API]
-    SERP[Serper · Tavily]
-    RETAIL[E-commerce Sites]
-    IMG[AI Image Gen]
-  end
-
-  FE1 --> C1
-  C1 --> R1
-  R1 --> ZCTX
-  ZCTX --> R1
-  R1 --> S1
-  S1 --> SERP
-  S1 --> FE1
-
-  FE3 --> P1
-  P1 --> PIN
-  PIN --> ZU
-  ZU --> ZCTX
-
-  FE2 --> T1
-  T1 --> IMG
-  IMG --> FE2
-
-  FE4 --> A1
-  A1 --> RETAIL
-  RETAIL --> A1
-  A1 --> FE1
-
+---
 
 ## 🚀 Installation & Setup
 
@@ -171,7 +167,7 @@ flowchart TD
    playwright install chromium
    ```
 4. **Config**: Create `.env` with `SERPER_API_KEY`, `ZEP_API_KEY`.
-5. **Run**: `uvicorn app.main:app --reload --port `
+5. **Run**: `uvicorn app.main:app --reload --port <YOUR_PORT>`
 
 ### 2️⃣ Frontend Setup
 
