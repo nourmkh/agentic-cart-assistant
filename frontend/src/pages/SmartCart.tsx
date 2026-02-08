@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Sparkles, ShoppingBag, Package, Truck, Image as ImageIcon } from "lucide-react";
+import { ArrowLeft, Sparkles, ShoppingBag, Package, Truck, Image as ImageIcon, Upload, Loader2, Download, ZoomIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -47,6 +47,7 @@ export default function SmartCart() {
   const [tryOnResultUrl, setTryOnResultUrl] = useState<string | null>(null);
   const [tryOnLoading, setTryOnLoading] = useState(false);
   const [tryOnError, setTryOnError] = useState<string | null>(null);
+  const [tryOnZoomOpen, setTryOnZoomOpen] = useState(false);
 
   const initialQuantities = useMemo(
     () => (products.length ? Object.fromEntries(products.map((p) => [p.id, 1])) : {}),
@@ -373,7 +374,7 @@ export default function SmartCart() {
       </AlertDialog>
 
       <Dialog open={tryOnOpen} onOpenChange={setTryOnOpen}>
-        <DialogContent className="max-w-xl">
+        <DialogContent className="max-w-4xl">
           <DialogHeader>
             <DialogTitle>Virtual Try‑On</DialogTitle>
             <DialogDescription>
@@ -382,21 +383,29 @@ export default function SmartCart() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-3">
-              <div className="rounded-xl border border-dashed border-border p-4 text-center">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-dashed border-border p-6 text-center bg-secondary/20">
                 <input
+                  id="tryon-file"
                   type="file"
                   accept="image/*"
                   onChange={(e) => handleBodyImageChange(e.target.files?.[0] ?? null)}
-                  className="text-xs"
+                  className="hidden"
                 />
-                <p className="text-[11px] text-muted-foreground mt-2">PNG or JPG, full‑body preferred.</p>
+                <label
+                  htmlFor="tryon-file"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-background hover:bg-secondary transition-colors text-xs font-semibold cursor-pointer"
+                >
+                  <Upload className="w-4 h-4" />
+                  Upload full‑body photo
+                </label>
+                <p className="text-[11px] text-muted-foreground mt-3">PNG or JPG. Full‑body, fully clothed for best results.</p>
               </div>
 
               {tryOnBodyImage && (
-                <div className="rounded-xl overflow-hidden border border-border">
-                  <img src={tryOnBodyImage} alt="Body preview" className="w-full h-56 object-cover" />
+                <div className="rounded-2xl overflow-hidden border border-border">
+                  <img src={tryOnBodyImage} alt="Body preview" className="w-full h-80 object-cover" />
                 </div>
               )}
 
@@ -405,15 +414,22 @@ export default function SmartCart() {
               <Button
                 onClick={handleGenerateTryOn}
                 disabled={tryOnLoading || !tryOnBodyImage}
-                className="w-full rounded-xl"
+                className={`w-full rounded-xl gradient-bg text-primary-foreground shadow-glow ${tryOnLoading ? "animate-pulse" : ""}`}
               >
-                {tryOnLoading ? "Generating..." : "Generate Try‑On"}
+                {tryOnLoading ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Generating your outfit...
+                  </span>
+                ) : (
+                  "Generate Try‑On"
+                )}
               </Button>
             </div>
 
-            <div className="space-y-3">
-              <div className="rounded-xl border border-border p-4 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center">
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-border p-4 flex items-center gap-3 bg-secondary/20">
+                <div className="w-11 h-11 rounded-xl bg-background flex items-center justify-center">
                   <ImageIcon className="w-5 h-5 text-muted-foreground" />
                 </div>
                 <div>
@@ -423,16 +439,63 @@ export default function SmartCart() {
               </div>
 
               {tryOnResultUrl ? (
-                <div className="rounded-xl overflow-hidden border border-border">
-                  <img src={tryOnResultUrl} alt="Try-on result" className="w-full h-72 object-cover" />
+                <div className="relative rounded-2xl overflow-hidden border border-border group cursor-zoom-in" onClick={() => setTryOnZoomOpen(true)}>
+                  <img src={tryOnResultUrl} alt="Try-on result" className="w-full h-[420px] object-cover transition-transform duration-300 group-hover:scale-[1.02]" />
+                  <div className="absolute right-4 top-4 bg-background/85 text-xs px-2 py-1 rounded-lg inline-flex items-center gap-1 shadow-sm">
+                    <ZoomIn className="w-3 h-3" />
+                    Click to zoom
+                  </div>
                 </div>
               ) : (
-                <div className="rounded-xl border border-dashed border-border h-72 flex items-center justify-center text-xs text-muted-foreground">
+                <div className="rounded-2xl border border-dashed border-border h-[420px] flex items-center justify-center text-xs text-muted-foreground bg-secondary/10">
                   Your generated try‑on will appear here.
+                </div>
+              )}
+
+              {tryOnResultUrl && (
+                <div className="flex items-center gap-2">
+                  <Button asChild variant="outline" className="rounded-xl">
+                    <a href={tryOnResultUrl} download target="_blank" rel="noreferrer">
+                      <span className="inline-flex items-center gap-2">
+                        <Download className="w-4 h-4" />
+                        Download image
+                      </span>
+                    </a>
+                  </Button>
+                  <Button variant="outline" className="rounded-xl" onClick={() => setTryOnZoomOpen(true)}>
+                    <span className="inline-flex items-center gap-2">
+                      <ZoomIn className="w-4 h-4" />
+                      Zoom
+                    </span>
+                  </Button>
                 </div>
               )}
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={tryOnZoomOpen} onOpenChange={setTryOnZoomOpen}>
+        <DialogContent className="max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>Try‑On Preview</DialogTitle>
+            <DialogDescription>Click the image or press ESC to close.</DialogDescription>
+          </DialogHeader>
+          {tryOnResultUrl && (
+            <div className="rounded-2xl overflow-hidden border border-border">
+              <img src={tryOnResultUrl} alt="Try-on zoom" className="w-full max-h-[80vh] object-contain bg-black/90" />
+            </div>
+          )}
+          {tryOnResultUrl && (
+            <Button asChild variant="outline" className="rounded-xl w-full">
+              <a href={tryOnResultUrl} download target="_blank" rel="noreferrer">
+                <span className="inline-flex items-center gap-2">
+                  <Download className="w-4 h-4" />
+                  Download image
+                </span>
+              </a>
+            </Button>
+          )}
         </DialogContent>
       </Dialog>
     </div>
