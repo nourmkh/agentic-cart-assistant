@@ -13,6 +13,8 @@ class SearchRequest(BaseModel):
     target: str = Field("", description="Target audience (e.g. 'women', 'men', 'kids')")
     color: str = Field("", description="Preferred color (e.g. 'black', 'navy')")
     items: list[str] = Field(..., description="Items to find (e.g. ['shirt', 'pants'])")
+    prompt: str | None = Field(default=None, description="Optional natural language prompt")
+    preferences: list[str] = Field(default_factory=list, description="Optional preference tags")
 
 
 class ProductVariants(BaseModel):

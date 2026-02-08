@@ -41,11 +41,7 @@ export function ProductCard({ product, index, quantity, onQuantityChange, onSwap
       {/* Image */}
       <div className="relative aspect-square bg-secondary/50 overflow-hidden">
         <img
-<<<<<<< HEAD
           src={getImageSrc(product.image)}
-=======
-          src={product.image.startsWith("http") ? product.image : imageMap[product.image]}
->>>>>>> sabaa
           alt={product.name}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
         />

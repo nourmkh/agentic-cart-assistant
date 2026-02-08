@@ -32,8 +32,9 @@ def extract_user_requirements(user_prompt: str, preferences: Optional[List[str]]
                     "content": (
                         "You are a strict information extractor. Return ONLY valid JSON. "
                         "Schema: {budget:string, style:[string], deadline:string, colors:[string], "
-                        "item:string, constraints:[string]}. "
+                        "item:string, constraints:[string], target:string, size:string}. "
                         "Infer budget/deadline if present. Infer style keywords and colors. "
+                        "Infer target audience (women/men/kids) and size if present. "
                         "Use empty string/array when missing."
                     ),
                 },
@@ -73,6 +74,8 @@ def _normalize_data(data: Dict[str, Any], user_prompt: str, preferences: List[st
         "colors": data.get("colors") or [],
         "item": str(data.get("item") or ""),
         "constraints": data.get("constraints") or [],
+        "target": str(data.get("target") or ""),
+        "size": str(data.get("size") or ""),
     }
 
     if not normalized["item"]:
@@ -89,6 +92,12 @@ def _normalize_data(data: Dict[str, Any], user_prompt: str, preferences: List[st
     if not normalized["style"] and fallback.get("style"):
         normalized["style"] = fallback["style"]
 
+    if not normalized["target"] and fallback.get("target"):
+        normalized["target"] = fallback["target"]
+
+    if not normalized["size"] and fallback.get("size"):
+        normalized["size"] = fallback["size"]
+
     if preferences:
         normalized["constraints"] = list({*normalized["constraints"], *preferences})
 
@@ -103,6 +112,10 @@ def _fallback_extract(text: str) -> Dict[str, Any]:
     if dollar_match:
         budget = f"${dollar_match.group(1)}"
     else:
+        trailing_dollar = re.search(r"(\d+(?:\.\d+)?)\s*\$", text)
+        if trailing_dollar:
+            budget = f"${trailing_dollar.group(1)}"
+    else:
         budget_match = re.search(r"budget\s*(?:of|:)?\s*(\d+(?:\.\d+)?)", lower)
         if budget_match:
             budget = f"${budget_match.group(1)}"
@@ -111,6 +124,10 @@ def _fallback_extract(text: str) -> Dict[str, Any]:
     deadline_match = re.search(r"\bby\s+([a-zA-Z]+)\b", lower)
     if deadline_match:
         deadline = f"by {deadline_match.group(1)}"
+    else:
+        in_days = re.search(r"\b(?:in|within)\s+(\d+)\s+days?\b", lower)
+        if in_days:
+            deadline = f"{in_days.group(1)} days"
 
     color_list = [
         "white",
@@ -132,9 +149,33 @@ def _fallback_extract(text: str) -> Dict[str, Any]:
     style_keywords = ["sporty", "sport", "chic", "trendy", "casual", "formal", "streetwear"]
     styles = [s for s in style_keywords if re.search(rf"\b{re.escape(s)}\b", lower)]
 
+    target = ""
+    for t in ["women", "women's", "men", "men's", "kids", "kid", "girl", "boy"]:
+        if re.search(rf"\b{re.escape(t)}\b", lower):
+            if "women" in t or "girl" in t:
+                target = "women"
+            elif "men" in t or "boy" in t:
+                target = "men"
+            else:
+                target = "kids"
+            break
+
+    size = ""
+    size_match = re.search(r"\bsize\s*([a-z0-9]{1,4})\b", lower)
+    if size_match:
+        size = size_match.group(1).upper()
+    else:
+        simple_sizes = ["xs", "s", "m", "l", "xl", "xxl"]
+        for s in simple_sizes:
+            if re.search(rf"\b{re.escape(s)}\b", lower):
+                size = s.upper()
+                break
+
     return {
         "budget": budget,
         "deadline": deadline,
         "colors": colors,
         "style": styles,
+        "target": target,
+        "size": size,
     }
