@@ -1,14 +1,18 @@
 import json
 import re
+from typing import Any
 from pathlib import Path
 
+import logging
 from fastapi import APIRouter
 
 from app.data.search_cache import get_last_extract, get_last_search, set_last_search
 from app.schemas.agent import SearchItem
 from app.services.RetailProduct import search_products
+from app.services.ranking_service import process_from_extract_and_results
 
 router = APIRouter(prefix="/api/cart", tags=["cart"])
+logger = logging.getLogger(__name__)
 
 
 def _slugify(value: str) -> str:
@@ -90,6 +94,24 @@ def _clean_item_text(item: str, colors: list[str], style_list: list[str], target
 
 def _extract_signature(payload: dict) -> str:
     return json.dumps(payload, sort_keys=True, ensure_ascii=True)
+
+
+def _to_ranking_item(result: Any) -> dict:
+    if isinstance(result, dict):
+        return {
+            "name": result.get("name") or result.get("title") or "",
+            "price": float(result.get("price") or 0.0),
+            "delivery_estimate": result.get("delivery_estimate") or result.get("deliveryEstimate") or result.get("delivery") or "",
+            "retailer": result.get("retailer") or "",
+            "item": result.get("item") or "",
+        }
+    return {
+        "name": getattr(result, "name", ""),
+        "price": float(getattr(result, "price", 0.0)),
+        "delivery_estimate": getattr(result, "delivery_estimate", ""),
+        "retailer": getattr(result, "retailer", ""),
+        "item": getattr(result, "item", ""),
+    }
 
 
 def _load_default_payload() -> dict:
@@ -239,6 +261,31 @@ async def get_cart(
             items=item_specs,
         )
 
+    last_extract = get_last_extract() or {}
+    ranking_lookup: dict[tuple[str, str], dict] = {}
+    if last_extract and results:
+        try:
+            extract_data = last_extract.get("data") or {}
+            ranking_results = [_to_ranking_item(r) for r in results]
+            logger.info("[RankingWorkflow] running from cart results (%s items)", len(ranking_results))
+            ranking_payload = process_from_extract_and_results(extract_data, ranking_results)
+            ranked_by_category = ranking_payload.get("results") or {}
+            for _category, ranked_items in ranked_by_category.items():
+                # ranked_items is a list of {product, score, decomposition, why_local, llm_explanation?}
+                for idx, entry in enumerate(ranked_items, start=1):
+                    product = entry.get("product") or {}
+                    key = (str(product.get("name") or ""), str(product.get("retailer") or ""))
+                    if not key[0]:
+                        continue
+                    ranking_lookup[key] = {
+                        "rank": idx,
+                        "score": entry.get("score"),
+                        "llm_explanation": entry.get("llm_explanation") if idx == 1 else "",
+                        "why_local": entry.get("why_local") or "",
+                    }
+        except Exception as exc:
+            logger.exception("[RankingWorkflow] failed: %s", exc)
+
     cart_items = []
     for idx, r in enumerate(results):
         variants = r.get("variants") if isinstance(r, dict) else r.variants
@@ -255,6 +302,7 @@ async def get_cart(
         delivery_estimate = r.get("delivery_estimate") if isinstance(r, dict) else r.delivery_estimate
         short_description = r.get("short_description") if isinstance(r, dict) else r.short_description
         link = r.get("link") if isinstance(r, dict) else r.link
+        ranking_meta = ranking_lookup.get((str(name), str(retailer)), {})
         cart_items.append(
             {
                 "id": f"{_slugify(name)}-{idx}",
@@ -273,6 +321,10 @@ async def get_cart(
                 "link": link,
                 "url": link,
                 "verified": False,
+                "rankingScore": ranking_meta.get("score"),
+                "rankingRank": ranking_meta.get("rank"),
+                "llmExplanation": ranking_meta.get("llm_explanation"),
+                "whyLocal": ranking_meta.get("why_local"),
             }
         )
 
